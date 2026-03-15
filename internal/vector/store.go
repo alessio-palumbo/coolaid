@@ -9,10 +9,17 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 )
 
+var defaultDBPath = ".ai/index.db"
+
 type Item struct {
 	FilePath  string
 	Content   string
 	Embedding []float64
+}
+
+type Result struct {
+	Item
+	Score float64
 }
 
 type Store struct {
@@ -20,6 +27,9 @@ type Store struct {
 	Items []Item
 }
 
+// NewStore creates and initializes a vector Store backed by SQLite.
+// It opens the database, ensures the required tables exist, and loads
+// the stored embeddings into memory so they can be searched efficiently.
 func NewStore() (*Store, error) {
 	db, err := openDefaultDB()
 	if err != nil {
@@ -38,43 +48,43 @@ func NewStore() (*Store, error) {
 	return s, nil
 }
 
+// Close closes the underlying DB.
 func (s *Store) Close() error {
 	return s.db.Close()
 }
 
-func (s *Store) Add(chunk, path string, emb []float64) {
+// Add adds a chunk to the in-memory index.
+// The embedding is normalized so that cosine
+// similarity can be computed efficiently during search.
+func (s *Store) Add(path, chunk string, emb []float64) {
 	s.Items = append(s.Items, Item{
 		FilePath:  path,
 		Content:   chunk,
-		Embedding: emb,
+		Embedding: normalize(emb),
 	})
 }
 
-func (s *Store) Search(query []float64, k int) []Item {
-	type result struct {
-		Item
-		Score float64
-	}
-
-	var results []result
+// Search finds the top-k most similar chunks to the given query vector.
+// The query vector is normalized internally and results are ranked using
+// cosine similarity against the normalized embeddings stored in memory.
+func (s *Store) Search(query []float64, k int) []Result {
+	query = normalize(query)
+	results := make([]Result, 0, len(s.Items))
 	for _, item := range s.Items {
-		score := Cosine(query, item.Embedding)
-		results = append(results, result{
+		results = append(results, Result{
 			Item:  item,
-			Score: score,
+			Score: cosine(query, item.Embedding),
 		})
 	}
 
-	slices.SortFunc(results, func(i, j result) int {
+	slices.SortFunc(results, func(i, j Result) int {
 		return cmp.Compare(j.Score, i.Score)
 	})
 
-	var out []Item
-	for i := 0; i < k && i < len(results); i++ {
-		out = append(out, results[i].Item)
+	if len(results) > k {
+		results = results[:k]
 	}
-
-	return out
+	return results
 }
 
 func openDefaultDB() (*sql.DB, error) {
@@ -83,5 +93,5 @@ func openDefaultDB() (*sql.DB, error) {
 		return nil, err
 	}
 
-	return sql.Open("sqlite3", ".ai/index.db")
+	return sql.Open("sqlite3", defaultDBPath)
 }
