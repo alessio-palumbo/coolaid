@@ -13,6 +13,7 @@ const (
 	defaultHTTPTimeout = 60 * time.Second
 	ollamaURL          = "http://localhost:11434"
 	llmModel           = "llama3"
+	embeddingsModel    = "nomic-embed-text"
 )
 
 var (
@@ -22,9 +23,10 @@ var (
 )
 
 type Client struct {
-	client  *http.Client
-	BaseURL string
-	Model   string
+	client          *http.Client
+	BaseURL         string
+	LLMModel        string
+	EmbeddingsModel string
 }
 
 type generateRequest struct {
@@ -40,9 +42,10 @@ type generateResponse struct {
 
 func NewClient() *Client {
 	return &Client{
-		client:  &http.Client{Timeout: defaultHTTPTimeout},
-		BaseURL: ollamaURL,
-		Model:   llmModel,
+		client:          &http.Client{Timeout: defaultHTTPTimeout},
+		BaseURL:         ollamaURL,
+		LLMModel:        llmModel,
+		EmbeddingsModel: embeddingsModel,
 	}
 }
 
@@ -60,7 +63,7 @@ func (c *Client) post(endpoint string, data []byte) (*http.Response, error) {
 func (c *Client) GenerateStream(prompt string, writer io.Writer) error {
 	reqBody := generateRequest{
 		Prompt: prompt,
-		Model:  c.Model,
+		Model:  c.LLMModel,
 		Stream: true,
 	}
 	data, err := json.Marshal(reqBody)

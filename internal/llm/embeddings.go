@@ -15,8 +15,8 @@ type embeddingResponse struct {
 
 func (c *Client) Embed(text string) ([]float64, error) {
 	reqBody := embeddingRequest{
-		Model:  c.Model,
 		Prompt: text,
+		Model:  c.EmbeddingsModel,
 	}
 
 	data, err := json.Marshal(reqBody)

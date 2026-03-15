@@ -15,6 +15,7 @@ func main() {
 			command.AskCommand(),
 			command.SummarizeCommand(),
 			command.ExplainCommand(),
+			command.IndexCommand(),
 		},
 	}
 
