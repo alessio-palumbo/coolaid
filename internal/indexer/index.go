@@ -6,7 +6,12 @@ import (
 )
 
 func Build(dir string, client *llm.Client) (*vector.Store, error) {
-	files, err := Scan(dir)
+	ignore, err := LoadIgnore()
+	if err != nil {
+		return nil, err
+	}
+
+	files, err := Scan(dir, ignore)
 	if err != nil {
 		return nil, err
 	}

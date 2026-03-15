@@ -6,10 +6,10 @@ import (
 	"path/filepath"
 )
 
-func Scan(dir string) ([]string, error) {
+func Scan(dir string, ignore *Ignore) ([]string, error) {
 	var files []string
 	err := filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
-		if d.IsDir() {
+		if d.IsDir() || ignore.Match(path) {
 			return nil
 		}
 
