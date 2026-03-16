@@ -6,11 +6,14 @@ import (
 	"go/token"
 )
 
-func ChunkGo(src string) []string {
+// ChunkGo extracts semantic chunks from Go source code.
+// Each chunk corresponds to a function or method and includes
+// its preceding comment and file path to improve embedding quality.
+func ChunkGo(path, src string) []string {
 	fset := token.NewFileSet()
 	file, err := parser.ParseFile(fset, "", src, parser.ParseComments)
 	if err != nil {
-		return ChunkText(src, 400)
+		return ChunkText(path, src)
 	}
 
 	var chunks []string
@@ -23,7 +26,13 @@ func ChunkGo(src string) []string {
 
 		start := fset.Position(fn.Pos()).Offset
 		end := fset.Position(fn.End()).Offset
-		chunks = append(chunks, src[start:end])
+		body := src[start:end]
+
+		if fn.Doc != nil {
+			chunks = append(chunks, formatChunk(path, fn.Doc.Text(), body))
+			continue
+		}
+		chunks = append(chunks, formatChunk(path, body))
 	}
 
 	return chunks
