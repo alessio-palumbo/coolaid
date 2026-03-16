@@ -1,2 +1,11 @@
+# Executable
 ai
+
+# Re-include folder with same name as executable
+!ai
+
+# Sqlite DB
+.ai
+
+# Indexing ignore patterns file
 .aiignore
