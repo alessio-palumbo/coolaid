@@ -1,6 +1,7 @@
 package llm
 
 import (
+	"ai-cli/internal/config"
 	"bytes"
 	"encoding/json"
 	"fmt"
@@ -12,8 +13,6 @@ import (
 const (
 	defaultHTTPTimeout = 60 * time.Second
 	ollamaURL          = "http://localhost:11434"
-	llmModel           = "llama3"
-	embeddingsModel    = "nomic-embed-text"
 )
 
 var (
@@ -40,12 +39,12 @@ type generateResponse struct {
 	Done     bool   `json:"done"`
 }
 
-func NewClient() *Client {
+func NewClient(cfg *config.Config) *Client {
 	return &Client{
 		client:          &http.Client{Timeout: defaultHTTPTimeout},
 		BaseURL:         ollamaURL,
-		LLMModel:        llmModel,
-		EmbeddingsModel: embeddingsModel,
+		LLMModel:        cfg.LLM.Model,
+		EmbeddingsModel: cfg.LLM.EmbeddingModel,
 	}
 }
 

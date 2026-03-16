@@ -10,7 +10,7 @@ import (
 	"github.com/urfave/cli/v2"
 )
 
-func SummarizeCommand() *cli.Command {
+func SummarizeCommand(llmClient *llm.Client) *cli.Command {
 	return &cli.Command{
 		Name:  "summarize",
 		Usage: "summarize a file",
@@ -25,7 +25,8 @@ func SummarizeCommand() *cli.Command {
 			if err != nil {
 				return err
 			}
-			if err := llm.NewClient().GenerateStream(prompt, os.Stdout); err != nil {
+
+			if err := llmClient.GenerateStream(prompt, os.Stdout); err != nil {
 				return err
 			}
 

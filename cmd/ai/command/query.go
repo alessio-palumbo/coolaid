@@ -11,7 +11,7 @@ import (
 	"github.com/urfave/cli/v2"
 )
 
-func QueryCommand() *cli.Command {
+func QueryCommand(llmClient *llm.Client, store *vector.Store) *cli.Command {
 	return &cli.Command{
 		Name:  "query",
 		Usage: "ask a question over your indexed code",
@@ -28,14 +28,7 @@ func QueryCommand() *cli.Command {
 				return fmt.Errorf("query required")
 			}
 
-			store, err := vector.NewStore()
-			if err != nil {
-				return err
-			}
-			defer store.Close()
-
-			client := llm.NewClient()
-			queryVec, err := client.Embed(query)
+			queryVec, err := llmClient.Embed(query)
 			if err != nil {
 				return err
 			}
@@ -51,7 +44,7 @@ func QueryCommand() *cli.Command {
 				return err
 			}
 
-			if err := client.GenerateStream(prompt, os.Stdout); err != nil {
+			if err := llmClient.GenerateStream(prompt, os.Stdout); err != nil {
 				return err
 			}
 

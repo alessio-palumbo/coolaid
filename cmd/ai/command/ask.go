@@ -9,7 +9,7 @@ import (
 	"github.com/urfave/cli/v2"
 )
 
-func AskCommand() *cli.Command {
+func AskCommand(llmClient *llm.Client) *cli.Command {
 	return &cli.Command{
 		Name:  "ask",
 		Usage: "ask the AI a question",
@@ -19,7 +19,7 @@ func AskCommand() *cli.Command {
 				return fmt.Errorf("prompt required")
 			}
 
-			if err := llm.NewClient().GenerateStream(prompt, os.Stdout); err != nil {
+			if err := llmClient.GenerateStream(prompt, os.Stdout); err != nil {
 				return err
 			}
 

@@ -5,8 +5,8 @@ import (
 	"ai-cli/internal/vector"
 )
 
-func Build(dir string, store *vector.Store, client *llm.Client) error {
-	ignore, err := LoadIgnore()
+func Build(dir string, store *vector.Store, client *llm.Client, configDir string) error {
+	ignore, err := LoadIgnore(store.ProjectRoot, configDir)
 	if err != nil {
 		return err
 	}

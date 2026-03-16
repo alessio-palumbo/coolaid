@@ -9,23 +9,17 @@ import (
 	"github.com/urfave/cli/v2"
 )
 
-func IndexCommand() *cli.Command {
+func IndexCommand(llmClient *llm.Client, store *vector.Store, configDir string) *cli.Command {
 	return &cli.Command{
 		Name:  "index",
 		Usage: "index the current repository",
 
 		Action: func(c *cli.Context) error {
-			store, err := vector.NewStore()
-			if err != nil {
-				return err
-			}
-			defer store.Close()
-
 			if err := store.Clear(); err != nil {
 				return err
 			}
 
-			if err := indexer.Build(".", store, llm.NewClient()); err != nil {
+			if err := indexer.Build(".", store, llmClient, configDir); err != nil {
 				return err
 			}
 			if err := store.Save(); err != nil {

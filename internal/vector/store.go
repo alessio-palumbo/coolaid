@@ -2,13 +2,14 @@ package vector
 
 import (
 	"container/heap"
+	"crypto/sha1"
 	"database/sql"
+	"encoding/hex"
 	"os"
+	"path/filepath"
 
 	_ "github.com/mattn/go-sqlite3"
 )
-
-var defaultDBPath = ".ai/index.db"
 
 type Item struct {
 	FilePath  string
@@ -24,24 +25,31 @@ type Result struct {
 }
 
 type Store struct {
-	db    *sql.DB
-	Items []Item
+	db          *sql.DB
+	ProjectRoot string
+	Items       []Item
 }
 
 // NewStore creates and initializes a vector Store backed by SQLite.
 // It opens the database, ensures the required tables exist, and loads
 // the stored embeddings into memory so they can be searched efficiently.
-func NewStore() (*Store, error) {
-	db, err := openDefaultDB()
+func NewStore(indexesDir string) (*Store, error) {
+	projectRoot, err := projectRoot()
 	if err != nil {
 		return nil, err
 	}
 
-	s := &Store{db: db}
+	db, err := openDB(indexesDir, projectRoot)
+	if err != nil {
+		return nil, err
+	}
+
+	s := &Store{db: db, ProjectRoot: projectRoot}
 	if err := s.init(); err != nil {
 		db.Close()
 		return nil, err
 	}
+
 	if err := s.Load(); err != nil {
 		db.Close()
 		return nil, err
@@ -99,11 +107,35 @@ func (s *Store) Search(query []float64, k int) []Result {
 	return results
 }
 
-func openDefaultDB() (*sql.DB, error) {
-	err := os.MkdirAll(".ai", 0755)
+func openDB(indexesDir, projectRoot string) (*sql.DB, error) {
+	hash := sha1.Sum([]byte(projectRoot))
+	name := hex.EncodeToString(hash[:8])
+	path := filepath.Join(indexesDir, name+".sqlite")
+
+	err := os.MkdirAll(filepath.Dir(path), 0755)
 	if err != nil {
 		return nil, err
 	}
+	return sql.Open("sqlite3", path)
+}
 
-	return sql.Open("sqlite3", defaultDBPath)
+func projectRoot() (string, error) {
+	dir, err := os.Getwd()
+	if err != nil {
+		return "", err
+	}
+
+	for {
+		git := filepath.Join(dir, ".git")
+		if _, err := os.Stat(git); err == nil {
+			return dir, nil
+		}
+
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			return dir, nil // reached filesystem root
+		}
+
+		dir = parent
+	}
 }

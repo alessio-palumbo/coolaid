@@ -2,7 +2,9 @@ package vector
 
 import (
 	"bytes"
+	"database/sql"
 	"encoding/binary"
+	"time"
 )
 
 func (s *Store) Clear() error {
@@ -91,6 +93,10 @@ func (s *Store) Load() error {
 }
 
 func (s *Store) init() error {
+	if err := s.ensureMetadata(); err != nil {
+		return err
+	}
+
 	query := `
 	    CREATE TABLE IF NOT EXISTS embeddings (
 	        id INTEGER PRIMARY KEY,
@@ -103,6 +109,31 @@ func (s *Store) init() error {
 	`
 
 	_, err := s.db.Exec(query)
+	return err
+}
+
+func (s *Store) ensureMetadata() error {
+	_, err := s.db.Exec(`
+	    CREATE TABLE IF NOT EXISTS meta (
+		project_root TEXT PRIMARY KEY,
+		created_at   TEXT
+	    )
+	`)
+	if err != nil {
+		return err
+	}
+
+	var root string
+	err = s.db.QueryRow(`SELECT project_root FROM meta LIMIT 1`).Scan(&root)
+	if err == sql.ErrNoRows {
+		_, err = s.db.Exec(
+			`INSERT INTO meta(project_root, created_at) VALUES (?, ?)`,
+			s.ProjectRoot,
+			time.Now().UTC().Format(time.RFC3339),
+		)
+		return err
+	}
+
 	return err
 }
 

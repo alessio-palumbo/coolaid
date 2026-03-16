@@ -10,7 +10,7 @@ import (
 	"github.com/urfave/cli/v2"
 )
 
-func ExplainCommand() *cli.Command {
+func ExplainCommand(llmClient *llm.Client) *cli.Command {
 	return &cli.Command{
 		Name:  "explain",
 		Usage: "explain a source file",
@@ -25,7 +25,7 @@ func ExplainCommand() *cli.Command {
 			if err != nil {
 				return err
 			}
-			if err := llm.NewClient().GenerateStream(prompt, os.Stdout); err != nil {
+			if err := llmClient.GenerateStream(prompt, os.Stdout); err != nil {
 				return err
 			}
 

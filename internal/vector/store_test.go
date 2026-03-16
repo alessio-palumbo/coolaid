@@ -8,7 +8,7 @@ import (
 
 func TestNewStore(t *testing.T) {
 	// Test initialisation.
-	store := newTestStore(t)
+	store, tmpDir := newTestStore(t)
 	if store == nil {
 		t.Fatal("expected store to be initialized")
 	}
@@ -17,13 +17,13 @@ func TestNewStore(t *testing.T) {
 	}
 
 	// Test initialisation with data.
-	store.Add("file.go", "func A()", []float64{1, 0})
+	store.Add("file.go", "func A()", 1, 1, []float64{1, 0})
 	if err := store.Save(); err != nil {
 		t.Fatal(err)
 	}
 
 	// Reload store
-	store2, err := NewStore()
+	store2, err := NewStore(tmpDir)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -36,9 +36,9 @@ func TestNewStore(t *testing.T) {
 
 func TestSearch(t *testing.T) {
 	store := &Store{}
-	store.Add("a.go", "func A()", []float64{1, 0})
-	store.Add("b.go", "func B()", []float64{0, 1})
-	store.Add("c.go", "func C()", []float64{0.8, 0.2})
+	store.Add("a.go", "func A()", 1, 1, []float64{1, 0})
+	store.Add("b.go", "func B()", 1, 1, []float64{0, 1})
+	store.Add("c.go", "func C()", 1, 1, []float64{0.8, 0.2})
 
 	query := []float64{1, 0}
 	results := store.Search(query, 1)
@@ -76,6 +76,7 @@ func BenchmarkSearch(b *testing.B) {
 		store.Add(
 			fmt.Sprintf("file%d.go", i),
 			"func test() {}",
+			1, 1,
 			randomVector(dim),
 		)
 	}

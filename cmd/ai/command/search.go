@@ -9,7 +9,7 @@ import (
 	"github.com/urfave/cli/v2"
 )
 
-func SearchCommand() *cli.Command {
+func SearchCommand(llmClient *llm.Client, store *vector.Store) *cli.Command {
 	return &cli.Command{
 		Name:  "search",
 		Usage: "semantic search in indexed code",
@@ -26,14 +26,7 @@ func SearchCommand() *cli.Command {
 				return fmt.Errorf("query required")
 			}
 
-			store, err := vector.NewStore()
-			if err != nil {
-				return err
-			}
-			defer store.Close()
-
-			client := llm.NewClient()
-			queryVec, err := client.Embed(prompt)
+			queryVec, err := llmClient.Embed(prompt)
 			if err != nil {
 				return err
 			}
