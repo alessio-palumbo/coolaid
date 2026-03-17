@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 )
 
@@ -16,6 +17,7 @@ const (
 )
 
 var (
+	tagsEndpoint       = "/api/tags"
 	generateEndpoint   = "/api/generate"
 	embeddingsEndpoint = "/api/embeddings"
 	contentTypeJSON    = "application/json"
@@ -39,24 +41,69 @@ type generateResponse struct {
 	Done     bool   `json:"done"`
 }
 
-func NewClient(cfg *config.Config) *Client {
-	return &Client{
+type tagsResponse struct {
+	Models []struct {
+		Name string `json:"name"`
+	} `json:"models"`
+}
+
+func NewClient(cfg *config.Config) (*Client, error) {
+	client := &Client{
 		client:          &http.Client{Timeout: defaultHTTPTimeout},
 		BaseURL:         ollamaURL,
 		LLMModel:        cfg.LLM.Model,
 		EmbeddingsModel: cfg.LLM.EmbeddingModel,
 	}
-}
 
-func (c *Client) post(endpoint string, data []byte) (*http.Response, error) {
-	resp, err := c.client.Post(c.BaseURL+endpoint, contentTypeJSON, bytes.NewBuffer(data))
-	if err != nil {
+	if err := client.ping(); err != nil {
 		return nil, err
 	}
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("llm returned status %d", resp.StatusCode)
+	return client, nil
+}
+
+func (c *Client) ping() error {
+	resp, err := c.client.Get(c.BaseURL + tagsEndpoint)
+	if err != nil {
+		return fmt.Errorf("failed to contact Ollama: %w", err)
 	}
-	return resp, err
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("ollama returned status %d", resp.StatusCode)
+	}
+
+	var tags tagsResponse
+	if err := json.NewDecoder(resp.Body).Decode(&tags); err != nil {
+		return fmt.Errorf("failed to decode Ollama tags: %w", err)
+	}
+
+	available := map[string]bool{}
+	for _, m := range tags.Models {
+		available[normalizeModel(m.Name)] = true
+	}
+	if !available[c.LLMModel] {
+		return fmt.Errorf("LLM model '%s' not installed", c.LLMModel)
+	}
+	if !available[c.EmbeddingsModel] {
+		return fmt.Errorf("embedding model '%s' not installed", c.EmbeddingsModel)
+	}
+
+	return nil
+}
+
+func normalizeModel(name string) string {
+	if i := strings.Index(name, ":"); i != -1 {
+		return name[:i]
+	}
+	return name
+}
+func (t *tagsResponse) contains(s string) bool {
+	for _, v := range t.Models {
+		if v.Name == s {
+			return true
+		}
+	}
+	return false
 }
 
 func (c *Client) GenerateStream(prompt string, writer io.Writer) error {
@@ -97,4 +144,15 @@ func (c *Client) GenerateStream(prompt string, writer io.Writer) error {
 	}
 
 	return nil
+}
+
+func (c *Client) post(endpoint string, data []byte) (*http.Response, error) {
+	resp, err := c.client.Post(c.BaseURL+endpoint, contentTypeJSON, bytes.NewBuffer(data))
+	if err != nil {
+		return nil, err
+	}
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("llm returned status %d", resp.StatusCode)
+	}
+	return resp, err
 }

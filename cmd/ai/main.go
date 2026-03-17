@@ -17,7 +17,10 @@ func main() {
 		log.Fatal(err)
 	}
 
-	llmClient := llm.NewClient(cfg)
+	llmClient, err := llm.NewClient(cfg)
+	if err != nil {
+		log.Fatal(err)
+	}
 
 	store, err := vector.NewStore(cfg.IndexesDir)
 	if err != nil {
