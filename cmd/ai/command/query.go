@@ -11,15 +11,23 @@ import (
 	"github.com/urfave/cli/v2"
 )
 
+type queryMode string
+
+const (
+	ModeFast     queryMode = "fast"
+	ModeBalanced queryMode = "balanced"
+	ModeDeep     queryMode = "deep"
+)
+
 func QueryCommand(llmClient *llm.Client, store *vector.Store) *cli.Command {
 	return &cli.Command{
 		Name:  "query",
 		Usage: "ask a question over your indexed code",
 		Flags: []cli.Flag{
-			&cli.IntFlag{
-				Name:  "k",
-				Value: 5,
-				Usage: "number of top chunks to retrieve",
+			&cli.StringFlag{
+				Name:  "mode",
+				Value: "fast",
+				Usage: "query mode determine the algorithm used by RAG",
 			},
 		},
 		Action: func(c *cli.Context) error {
@@ -33,7 +41,7 @@ func QueryCommand(llmClient *llm.Client, store *vector.Store) *cli.Command {
 				return err
 			}
 
-			results, err := store.Search(queryVec, c.Int("k"))
+			results, err := searchByMode(c, store, queryVec)
 			if err != nil {
 				return err
 			}
@@ -54,5 +62,16 @@ func QueryCommand(llmClient *llm.Client, store *vector.Store) *cli.Command {
 			fmt.Println()
 			return nil
 		},
+	}
+}
+
+func searchByMode(c *cli.Context, store *vector.Store, queryVec []float64) ([]vector.Result, error) {
+	switch queryMode(c.String("mode")) {
+	case ModeDeep:
+		return store.SearchMMR(queryVec, 12, 0.85)
+	case ModeBalanced:
+		return store.Search(queryVec, 8)
+	default:
+		return store.Search(queryVec, 5)
 	}
 }

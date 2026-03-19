@@ -63,6 +63,35 @@ func TestSearch(t *testing.T) {
 	}
 }
 
+func TestMMRSearch(t *testing.T) {
+	store := &Store{}
+	store.Add("a.go", "func A()", 1, 1, []float64{1, 0})
+	store.Add("b.go", "func B()", 1, 1, []float64{0, 1})
+	store.Add("c.go", "func C()", 1, 1, []float64{0.8, 0.2})
+
+	query := []float64{1, 0}
+	results, _ := store.Search(query, 1)
+	if len(results) != 1 {
+		t.Fatalf("expected 1 result, got %d", len(results))
+	}
+
+	if results[0].Content != "func A()" {
+		t.Fatalf("unexpected result: %s", results[0].Content)
+	}
+
+	results, _ = store.SearchMMR(query, 3, 0.85)
+	if len(results) != 3 {
+		t.Fatalf("expected 3 results, got %d", len(results))
+	}
+
+	expect := []string{"func A()", "func C()", "func B()"}
+	for i := range results {
+		if got, want := results[i].Content, expect[i]; got != want {
+			t.Fatalf("expected %s to rank %d, got %s", got, i, want)
+		}
+	}
+}
+
 func BenchmarkSearch(b *testing.B) {
 	var (
 		dim    = 768
