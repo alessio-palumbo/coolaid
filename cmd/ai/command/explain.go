@@ -21,7 +21,7 @@ func ExplainCommand(llmClient *llm.Client) *cli.Command {
 				return err
 			}
 
-			prompt, err := prompts.Render(prompts.TemplateExplain, string(data))
+			prompt, err := prompts.Render(&prompts.Config{Template: prompts.TemplateExplain}, string(data))
 			if err != nil {
 				return err
 			}

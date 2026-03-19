@@ -16,22 +16,54 @@ const (
 	TemplateQuery     promptTemplate = "query.tmpl"
 )
 
+type promptMode int
+
+const (
+	PromptSimple promptMode = iota
+	PromptStructured
+)
+
+const structuredInstructions = `
+Structure your answer as:
+1. Summary
+2. Key components involved
+3. Explanation
+`
+
+const formattingDirectives = `
+Use clear formatting:
+- Short paragraphs
+- Bullet points for lists
+- Code formatting for commands or identifiers
+`
+
 //go:embed templates/*.tmpl
 var promptFS embed.FS
 
-var templates = template.Must(
-	template.ParseFS(promptFS, "templates/*.tmpl"),
-)
+var templates = template.Must(template.ParseFS(promptFS, "templates/*.tmpl"))
 
-type Content struct {
-	Prompt  string
-	Context string
+type Config struct {
+	Template   promptTemplate
+	Structured bool
 }
 
-func Render(tmpl promptTemplate, prompt string, context ...vector.Result) (string, error) {
-	content := Content{Prompt: prompt}
+type templateData struct {
+	Formatting string
+	Prompt     string
+	Context    string
+}
+
+func Render(cfg *Config, prompt string, context ...vector.Result) (string, error) {
+	if cfg == nil {
+		return "", fmt.Errorf("template config must be set")
+	}
+
+	if cfg.Structured {
+		prompt += structuredInstructions
+	}
+	td := templateData{Formatting: formattingDirectives, Prompt: prompt}
 	for _, r := range context {
-		content.Context += fmt.Sprintf(
+		td.Context += fmt.Sprintf(
 			"File: %s (lines %d-%d)\n%s\n---\n",
 			r.FilePath,
 			r.StartLine,
@@ -41,10 +73,9 @@ func Render(tmpl promptTemplate, prompt string, context ...vector.Result) (strin
 	}
 
 	var buf bytes.Buffer
-	if err := templates.Lookup(string(tmpl)).
-		Execute(&buf, content); err != nil {
+	if err := templates.Lookup(string(cfg.Template)).
+		Execute(&buf, td); err != nil {
 		return "", err
 	}
-
 	return buf.String(), nil
 }

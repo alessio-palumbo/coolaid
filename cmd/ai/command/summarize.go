@@ -21,7 +21,7 @@ func SummarizeCommand(llmClient *llm.Client) *cli.Command {
 				return err
 			}
 
-			prompt, err := prompts.Render(prompts.TemplateSummarize, string(data))
+			prompt, err := prompts.Render(&prompts.Config{Template: prompts.TemplateSummarize}, string(data))
 			if err != nil {
 				return err
 			}

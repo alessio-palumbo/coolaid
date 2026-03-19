@@ -24,6 +24,11 @@ func QueryCommand(llmClient *llm.Client, store *vector.Store) *cli.Command {
 		Name:  "query",
 		Usage: "ask a question over your indexed code",
 		Flags: []cli.Flag{
+			&cli.BoolFlag{
+				Name:  "v",
+				Value: false,
+				Usage: "set to true for verbose structure output",
+			},
 			&cli.StringFlag{
 				Name:  "mode",
 				Value: "fast",
@@ -50,7 +55,10 @@ func QueryCommand(llmClient *llm.Client, store *vector.Store) *cli.Command {
 				return nil
 			}
 
-			prompt, err := prompts.Render(prompts.TemplateQuery, query, results...)
+			prompt, err := prompts.Render(
+				&prompts.Config{Template: prompts.TemplateQuery, Structured: c.Bool("v")},
+				query, results...,
+			)
 			if err != nil {
 				return err
 			}
