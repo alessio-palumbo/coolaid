@@ -11,14 +11,6 @@ import (
 	"github.com/urfave/cli/v2"
 )
 
-type queryMode string
-
-const (
-	ModeFast     queryMode = "fast"
-	ModeBalanced queryMode = "balanced"
-	ModeDeep     queryMode = "deep"
-)
-
 func QueryCommand(llmClient *llm.Client, store *vector.Store) *cli.Command {
 	return &cli.Command{
 		Name:  "query",
@@ -32,7 +24,9 @@ func QueryCommand(llmClient *llm.Client, store *vector.Store) *cli.Command {
 			&cli.StringFlag{
 				Name:  "mode",
 				Value: "fast",
-				Usage: "query mode determine the algorithm used by RAG",
+				Usage: fmt.Sprintf("query mode determine the algorithm used by RAG [%s, %s, %s]",
+					vector.SearchModeFast, vector.SearchModeBalanced, vector.SearchModeDeep),
+				DefaultText: string(vector.SearchModeFast),
 			},
 		},
 		Action: func(c *cli.Context) error {
@@ -46,7 +40,7 @@ func QueryCommand(llmClient *llm.Client, store *vector.Store) *cli.Command {
 				return err
 			}
 
-			results, err := searchByMode(c, store, queryVec)
+			results, err := store.SearchForMode(c.String("mode"), queryVec)
 			if err != nil {
 				return err
 			}
@@ -70,16 +64,5 @@ func QueryCommand(llmClient *llm.Client, store *vector.Store) *cli.Command {
 			fmt.Println()
 			return nil
 		},
-	}
-}
-
-func searchByMode(c *cli.Context, store *vector.Store, queryVec []float64) ([]vector.Result, error) {
-	switch queryMode(c.String("mode")) {
-	case ModeDeep:
-		return store.SearchMMR(queryVec, 12, 0.85)
-	case ModeBalanced:
-		return store.Search(queryVec, 8)
-	default:
-		return store.Search(queryVec, 5)
 	}
 }

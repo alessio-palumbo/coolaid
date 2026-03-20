@@ -19,6 +19,11 @@ func SearchCommand(llmClient *llm.Client, store *vector.Store) *cli.Command {
 				Value: 5,
 				Usage: "number of results",
 			},
+			&cli.BoolFlag{
+				Name:  "mmr",
+				Value: false,
+				Usage: "use Max Marginal Relevance",
+			},
 		},
 		Action: func(c *cli.Context) error {
 			prompt := strings.Join(c.Args().Slice(), " ")
@@ -31,7 +36,7 @@ func SearchCommand(llmClient *llm.Client, store *vector.Store) *cli.Command {
 				return err
 			}
 
-			results, err := store.Search(queryVec, c.Int("k"))
+			results, err := store.Search(queryVec, c.Int("k"), c.Bool("mmr"))
 			if err != nil {
 				return err
 			}

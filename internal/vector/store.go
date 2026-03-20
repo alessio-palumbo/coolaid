@@ -13,6 +13,14 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 )
 
+const (
+	SearchModeFast     string = "fast"
+	SearchModeBalanced string = "balanced"
+	SearchModeDeep     string = "deep"
+)
+
+const defaultMMRLambda = 0.85
+
 const mmrOversampleFactor = 4
 
 type Item struct {
@@ -75,19 +83,23 @@ func (s *Store) Add(path, text string, startLine, endLine int, emb []float64) {
 	})
 }
 
+// SearchForMode performs a Search according to named configurations.
+func (s *Store) SearchForMode(mode string, queryVec []float64) ([]Result, error) {
+	switch mode {
+	case SearchModeDeep:
+		return s.Search(queryVec, 12, true)
+	case SearchModeBalanced:
+		return s.Search(queryVec, 8, false)
+	default:
+		return s.Search(queryVec, 5, false)
+	}
+}
+
 // Search finds the top-k most similar chunks to the given query vector.
 // The query vector is normalized internally and results are ranked using
 // cosine similarity against the normalized embeddings stored in memory.
-func (s *Store) Search(query []float64, k int) ([]Result, error) {
-	if err := s.ensureLoaded(); err != nil {
-		return nil, err
-	}
 
-	query = normalize(query)
-	return s.topK(query, k), nil
-}
-
-// SearchMMR applies Max Marginal Relevance (MMR) to select k items from a candidate set
+// If useMMR is true it then applies Max Marginal Relevance (MMR) to the candidate set
 // of sizez k*mmrOversampleFactor.
 //
 // MMR balances two objectives:
@@ -106,14 +118,27 @@ func (s *Store) Search(query []float64, k int) ([]Result, error) {
 // Lower λ → more diversity (less relevance)
 //
 // This helps avoid returning many similar chunks (e.g. from the same file).
-func (s *Store) SearchMMR(query []float64, k int, lambda float64) ([]Result, error) {
+func (s *Store) Search(query []float64, k int, useMMR bool) ([]Result, error) {
 	if err := s.ensureLoaded(); err != nil {
 		return nil, err
 	}
 
 	query = normalize(query)
-	candidates := s.topK(query, k*mmrOversampleFactor)
-	return mmr(query, candidates, k, lambda), nil
+	if useMMR {
+		candidates := s.topK(query, k*mmrOversampleFactor)
+		return mmr(query, candidates, k, defaultMMRLambda), nil
+	}
+	return s.topK(query, k), nil
+}
+
+// ensureLoaded lazily loads the store from the DB only if Items is empty
+// and the store has not already been loaded. This allows in-memory
+// tests and temporary stores without hitting the DB.
+func (s *Store) ensureLoaded() error {
+	if !s.loaded && len(s.Items) == 0 {
+		return s.Load()
+	}
+	return nil
 }
 
 func (s *Store) topK(query []float64, k int) []Result {
@@ -142,16 +167,6 @@ func (s *Store) topK(query []float64, k int) []Result {
 		results[i] = heap.Pop(h).(Result)
 	}
 	return results
-}
-
-// ensureLoaded lazily loads the store from the DB only if Items is empty
-// and the store has not already been loaded. This allows in-memory
-// tests and temporary stores without hitting the DB.
-func (s *Store) ensureLoaded() error {
-	if !s.loaded && len(s.Items) == 0 {
-		return s.Load()
-	}
-	return nil
 }
 
 func mmr(query []float64, results []Result, k int, lambda float64) []Result {

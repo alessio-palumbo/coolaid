@@ -29,6 +29,10 @@ func TestNewStore(t *testing.T) {
 	}
 	defer store2.Close()
 
+	store2.ensureLoaded()
+	if err != nil {
+		t.Fatal(err)
+	}
 	if len(store2.Items) != 1 {
 		t.Fatalf("expected 1 item, got %d", len(store2.Items))
 	}
@@ -40,55 +44,50 @@ func TestSearch(t *testing.T) {
 	store.Add("b.go", "func B()", 1, 1, []float64{0, 1})
 	store.Add("c.go", "func C()", 1, 1, []float64{0.8, 0.2})
 
-	query := []float64{1, 0}
-	results, _ := store.Search(query, 1)
-	if len(results) != 1 {
-		t.Fatalf("expected 1 result, got %d", len(results))
+	testCases := map[string]struct {
+		k             int
+		useMMR        bool
+		expectN       int
+		expectContent []string
+	}{
+		"single": {
+			k:             1,
+			expectN:       1,
+			expectContent: []string{"func A()"},
+		},
+		"multiple": {
+			k:             3,
+			expectN:       3,
+			expectContent: []string{"func A()", "func C()", "func B()"},
+		},
+		"single: mmr": {
+			k:             1,
+			useMMR:        true,
+			expectN:       1,
+			expectContent: []string{"func A()"},
+		},
+		"multiple: mmr": {
+			k:             3,
+			useMMR:        true,
+			expectN:       3,
+			expectContent: []string{"func A()", "func C()", "func B()"},
+		},
 	}
 
-	if results[0].Content != "func A()" {
-		t.Fatalf("unexpected result: %s", results[0].Content)
-	}
+	for name, tc := range testCases {
+		t.Run(name, func(t *testing.T) {
+			query := []float64{1, 0}
+			results, _ := store.Search(query, tc.k, false)
+			if len(results) != tc.expectN {
+				t.Fatalf("expected %d result, got %d", tc.expectN, len(results))
+			}
+			for i := range results {
+				if got, want := results[i].Content, tc.expectContent[i]; got != want {
+					t.Fatalf("expected %s to rank %d, got %s", got, i, want)
+				}
+			}
 
-	results, _ = store.Search(query, 3)
-	if len(results) != 3 {
-		t.Fatalf("expected 3 results, got %d", len(results))
-	}
-
-	expect := []string{"func A()", "func C()", "func B()"}
-	for i := range results {
-		if got, want := results[i].Content, expect[i]; got != want {
-			t.Fatalf("expected %s to rank %d, got %s", got, i, want)
-		}
-	}
-}
-
-func TestMMRSearch(t *testing.T) {
-	store := &Store{}
-	store.Add("a.go", "func A()", 1, 1, []float64{1, 0})
-	store.Add("b.go", "func B()", 1, 1, []float64{0, 1})
-	store.Add("c.go", "func C()", 1, 1, []float64{0.8, 0.2})
-
-	query := []float64{1, 0}
-	results, _ := store.Search(query, 1)
-	if len(results) != 1 {
-		t.Fatalf("expected 1 result, got %d", len(results))
-	}
-
-	if results[0].Content != "func A()" {
-		t.Fatalf("unexpected result: %s", results[0].Content)
-	}
-
-	results, _ = store.SearchMMR(query, 3, 0.85)
-	if len(results) != 3 {
-		t.Fatalf("expected 3 results, got %d", len(results))
-	}
-
-	expect := []string{"func A()", "func C()", "func B()"}
-	for i := range results {
-		if got, want := results[i].Content, expect[i]; got != want {
-			t.Fatalf("expected %s to rank %d, got %s", got, i, want)
-		}
+		})
 	}
 }
 
@@ -113,7 +112,7 @@ func BenchmarkSearch(b *testing.B) {
 	query := randomVector(dim)
 	b.ResetTimer()
 	for b.Loop() {
-		store.Search(query, 5)
+		store.Search(query, 5, false)
 	}
 }
 
