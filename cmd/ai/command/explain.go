@@ -3,14 +3,17 @@ package command
 import (
 	"fmt"
 	"os"
+	"slices"
+	"strings"
 
 	"ai-cli/internal/llm"
 	"ai-cli/internal/prompts"
+	"ai-cli/internal/vector"
 
 	"github.com/urfave/cli/v2"
 )
 
-func ExplainCommand(llmClient *llm.Client) *cli.Command {
+func ExplainCommand(llmClient *llm.Client, store *vector.Store) *cli.Command {
 	return &cli.Command{
 		Name:  "explain",
 		Usage: "explain a source file",
@@ -21,7 +24,28 @@ func ExplainCommand(llmClient *llm.Client) *cli.Command {
 				return err
 			}
 
-			prompt, err := prompts.Render(&prompts.Config{Template: prompts.TemplateExplain}, string(data))
+			content := string(data)
+
+			// Find dependencies chunks to pass as dependencies to LLM.
+			signals := llm.ExtractSignals(file, content)
+			embedding, err := llmClient.Embed(signals)
+			if err != nil {
+				return err
+			}
+			results, err := store.Search(embedding, 8, false)
+			if err != nil {
+				return err
+			}
+
+			// Exclude any chunks matching the file to avoid wasting tokens.
+			for i, r := range results {
+				if strings.Contains(r.FilePath, file) {
+					results = slices.Delete(results, i, i+1)
+				}
+			}
+
+			content = fmt.Sprintf("file: %s\n\n", file) + content
+			prompt, err := prompts.Render(&prompts.Config{Template: prompts.TemplateExplain}, content, results...)
 			if err != nil {
 				return err
 			}

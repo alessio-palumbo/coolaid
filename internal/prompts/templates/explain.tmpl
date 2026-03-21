@@ -1,15 +1,16 @@
-You are a senior software engineer.
+You are a senior software engineer analyzing a codebase.
 
-Explain the following code clearly.
-
-Focus on:
-- the purpose of the code
-- how it works
-- important functions or structures
-
-Be concise and technical.
-
-{{.Formatting}}
-
-Code:
+Primary file:
 {{.Prompt}}
+
+Related code from the same project:
+{{.Context}}
+
+Explain:
+- the purpose of the primary file
+- how it works
+- how it interacts with the related code
+- key functions and data flow
+
+Be concise, technical, and structured.
+{{.Formatting}}
