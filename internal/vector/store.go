@@ -20,10 +20,13 @@ const (
 	SearchModeDeep     string = "deep"
 )
 
+// defaultMMRLambda controls the tradeoff between relevance (1) and diversity (0).
 const defaultMMRLambda = 0.85
 
+// mmrOversampleFactor is the k-multiplier used to search for candidates.
 const mmrOversampleFactor = 4
 
+// Item represents a Chunk and it's metadata.
 type Item struct {
 	FilePath  string
 	StartLine int
@@ -32,16 +35,20 @@ type Item struct {
 	Embedding []float64
 }
 
+// Result combines an Item with its search Score.
 type Result struct {
 	Item
 	Score float64
 }
 
+// Store allows storage and retrieval of Items and Summary
+// for an indexed repository or folder.
 type Store struct {
 	db          *sql.DB
 	loaded      bool
 	ProjectRoot string
 	Items       []Item
+	Summary     string
 }
 
 // JoinResults formats returns a formatted string of results printing or for LLM prompting.
@@ -100,6 +107,11 @@ func (s *Store) Add(path, text string, startLine, endLine int, emb []float64) {
 	})
 }
 
+// AddSummary adds a summary to the in-memory Store.
+func (s *Store) AddSummary(summary string) {
+	s.Summary = summary
+}
+
 // SearchForMode performs a Search according to named configurations.
 func (s *Store) SearchForMode(mode string, queryVec []float64) ([]Result, error) {
 	switch mode {
@@ -136,22 +148,22 @@ func (s *Store) SearchForMode(mode string, queryVec []float64) ([]Result, error)
 //
 // This helps avoid returning many similar chunks (e.g. from the same file).
 func (s *Store) Search(query []float64, k int, useMMR bool) ([]Result, error) {
-	if err := s.ensureLoaded(); err != nil {
+	if err := s.EnsureLoaded(); err != nil {
 		return nil, err
 	}
 
 	query = normalize(query)
 	if useMMR {
 		candidates := s.topK(query, k*mmrOversampleFactor)
-		return mmr(query, candidates, k, defaultMMRLambda), nil
+		return mmr(candidates, k, defaultMMRLambda), nil
 	}
 	return s.topK(query, k), nil
 }
 
-// ensureLoaded lazily loads the store from the DB only if Items is empty
+// EnsureLoaded lazily loads the store from the DB only if Items is empty
 // and the store has not already been loaded. This allows in-memory
 // tests and temporary stores without hitting the DB.
-func (s *Store) ensureLoaded() error {
+func (s *Store) EnsureLoaded() error {
 	if !s.loaded && len(s.Items) == 0 {
 		return s.Load()
 	}
@@ -186,31 +198,27 @@ func (s *Store) topK(query []float64, k int) []Result {
 	return results
 }
 
-func mmr(query []float64, results []Result, k int, lambda float64) []Result {
-	selected := []Result{}
-	candidates := make([]Item, len(results))
-	for i, r := range results {
-		candidates[i] = r.Item
-	}
+func mmr(results []Result, k int, lambda float64) []Result {
+	selected := make([]Result, 0, k)
+	candidates := make([]Result, len(results))
+	copy(candidates, results)
 
 	for len(selected) < k && len(candidates) > 0 {
 		var bestIdx int
-		var bestScore = math.Inf(-1)
+		bestScore := math.Inf(-1)
 
-		for i, item := range candidates {
-			simToQuery := cosine(query, item.Embedding)
-
+		for i, cand := range candidates {
 			// Determine how similar this candidate to other picked items.
 			var maxSimToSelected float64
 			for _, sel := range selected {
-				sim := cosine(item.Embedding, sel.Embedding)
+				sim := cosine(cand.Embedding, sel.Embedding)
 				if sim > maxSimToSelected {
 					maxSimToSelected = sim
 				}
 			}
 
 			// Determine score based on relevace but penalise if it's too similar to what we already have.
-			score := lambda*simToQuery - (1-lambda)*maxSimToSelected
+			score := lambda*cand.Score - (1-lambda)*maxSimToSelected
 
 			if score > bestScore {
 				bestScore = score
@@ -218,13 +226,8 @@ func mmr(query []float64, results []Result, k int, lambda float64) []Result {
 			}
 		}
 
-		best := candidates[bestIdx]
-		selected = append(selected, Result{
-			Item:  best,
-			Score: bestScore,
-		})
-
-		// remove selected item
+		selected = append(selected, candidates[bestIdx])
+		// remove selected candidate
 		candidates = slices.Delete(candidates, bestIdx, bestIdx+1)
 	}
 

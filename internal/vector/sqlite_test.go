@@ -7,6 +7,7 @@ import (
 func TestStoreSaveLoad(t *testing.T) {
 	store, tmpDir := newTestStore(t)
 	store.Add("file.go", "func test()", 1, 1, []float64{1, 2, 3})
+	store.AddSummary("summary")
 	if err := store.Save(); err != nil {
 		t.Fatal(err)
 	}
@@ -17,8 +18,12 @@ func TestStoreSaveLoad(t *testing.T) {
 	}
 	defer store2.Close()
 
+	store2.EnsureLoaded()
 	if len(store2.Items) != 1 {
-		t.Fatalf("expected 1 item, got %d", len(store2.Items))
+		t.Fatalf("Expected 1 item, got %d", len(store2.Items))
+	}
+	if store2.Summary != "summary" {
+		t.Fatalf("Expected summary to be loaded")
 	}
 }
 

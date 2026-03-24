@@ -68,7 +68,7 @@ func TestNewStore(t *testing.T) {
 	}
 	defer store2.Close()
 
-	store2.ensureLoaded()
+	store2.EnsureLoaded()
 	if err != nil {
 		t.Fatal(err)
 	}
