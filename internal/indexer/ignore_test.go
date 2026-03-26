@@ -8,7 +8,6 @@ import (
 
 func TestIgnoreMatch(t *testing.T) {
 	project := t.TempDir()
-	config := t.TempDir()
 
 	// create project .gitignore
 	err := os.WriteFile(
@@ -30,17 +29,7 @@ func TestIgnoreMatch(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// create global ignore
-	err = os.WriteFile(
-		filepath.Join(config, "ignore"),
-		[]byte("*.tmp\n"),
-		0644,
-	)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	ignore, err := LoadIgnore(project, config)
+	ignore, err := LoadIgnore(project, []string{"*.tmp"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -49,6 +38,11 @@ func TestIgnoreMatch(t *testing.T) {
 		path    string
 		ignored bool
 	}{
+		{".git/hooks", true},
+		{"node_modules", true},
+		{"dist/tmp.txt", true},
+		{"package.lock", true},
+		{"build/app.bin", true},
 		{"vendor/foo.go", true},
 		{"pkg/main.go", false},
 		{"app.log", true},
@@ -67,6 +61,26 @@ func TestIgnoreMatch(t *testing.T) {
 				tt.ignored,
 				got,
 			)
+		}
+	}
+}
+
+func BenchmarkMatch(b *testing.B) {
+	ig, _ := LoadIgnore(".", nil)
+
+	// Test cases: hits, misses, and deep paths
+	paths := []string{
+		"src/main.go",                  // Miss
+		"node_modules/lodash/index.js", // Hit (Dir pattern)
+		"dist/bin/app",                 // Hit (Full path)
+		"build.log",                    // Hit (Glob)
+		"very/deeply/nested/path/to/some/file/no/match.txt", // Miss (Performance killer)
+	}
+
+	b.ResetTimer()
+	for b.Loop() {
+		for _, p := range paths {
+			ig.Match(p)
 		}
 	}
 }

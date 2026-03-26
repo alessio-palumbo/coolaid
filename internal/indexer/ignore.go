@@ -7,14 +7,32 @@ import (
 	"strings"
 )
 
-type Ignore struct {
-	patterns []string
+var defaultIgnorePatterns = []string{
+	".git/",
+	"node_modules/",
+	"vendor/",
+	"dist/",
+	"build/",
+	"*.lock",
 }
 
-func LoadIgnore(projectRoot, configDir string) (*Ignore, error) {
-	var patterns []string
+type pattern struct {
+	clean    string
+	isDir    bool
+	hasSlash bool
+	isSimple bool
+}
+
+type Ignore struct {
+	segmentSimple []pattern
+	segmentGlob   []pattern
+	pathPatterns  []pattern
+}
+
+func LoadIgnore(projectRoot string, userIgnorePatterns []string) (*Ignore, error) {
+	rawPatterns := append(defaultIgnorePatterns, userIgnorePatterns...)
+
 	files := []string{
-		filepath.Join(configDir, "ignore"), // global
 		filepath.Join(projectRoot, ".gitignore"),
 		filepath.Join(projectRoot, ".aiignore"),
 	}
@@ -27,68 +45,86 @@ func LoadIgnore(projectRoot, configDir string) (*Ignore, error) {
 
 		scanner := bufio.NewScanner(file)
 		for scanner.Scan() {
-
 			line := strings.TrimSpace(scanner.Text())
 
 			if line == "" || strings.HasPrefix(line, "#") {
 				continue
 			}
 
-			patterns = append(patterns, line)
+			rawPatterns = append(rawPatterns, line)
 		}
 
 		file.Close()
 	}
 
-	return &Ignore{patterns: patterns}, nil
+	// Precompute patterns
+	var ig Ignore
+	for _, p := range rawPatterns {
+		p = filepath.ToSlash(strings.TrimSpace(p))
+		if p == "" {
+			continue
+		}
+
+		isDir := strings.HasSuffix(p, "/")
+		clean := strings.TrimSuffix(p, "/")
+		hasSlash := strings.Contains(clean, "/")
+		isSimple := !strings.ContainsAny(clean, "*?[]")
+
+		pt := pattern{
+			clean:    clean,
+			isDir:    isDir,
+			hasSlash: hasSlash,
+			isSimple: isSimple,
+		}
+
+		if !hasSlash {
+			if isSimple {
+				ig.segmentSimple = append(ig.segmentSimple, pt)
+			} else {
+				ig.segmentGlob = append(ig.segmentGlob, pt)
+			}
+		} else {
+			ig.pathPatterns = append(ig.pathPatterns, pt)
+		}
+	}
+
+	return &ig, nil
 }
 
 func (i *Ignore) Match(path string) bool {
 	path = filepath.ToSlash(path)
 	base := filepath.Base(path)
 
-	for _, pattern := range i.patterns {
-		pattern = filepath.ToSlash(pattern)
-
-		isDirPattern := strings.HasSuffix(pattern, "/")
-		cleanPattern := strings.TrimSuffix(pattern, "/")
-
-		// CASE 1: pattern has no slash → match any path segment
-		if !strings.Contains(cleanPattern, "/") {
-			for seg := range strings.SplitSeq(path, "/") {
-				match, err := filepath.Match(cleanPattern, seg)
-				if err == nil && match {
-					// if directory-only pattern, ensure it's not matching a file
-					if isDirPattern {
-						// assume directory if not last segment or explicitly known
-						if seg != base {
-							return true
-						}
-						continue
-					}
-					return true
-				}
+	for _, p := range i.segmentSimple {
+		for seg := range strings.SplitSeq(path, "/") {
+			if seg == p.clean {
+				return true
 			}
+		}
+	}
+
+	for _, p := range i.segmentGlob {
+		for seg := range strings.SplitSeq(path, "/") {
+			if match, _ := filepath.Match(p.clean, seg); match {
+				return true
+			}
+		}
+	}
+
+	for _, p := range i.pathPatterns {
+		// fast prefix reject for dir patterns
+		if p.isDir && !strings.HasPrefix(path, p.clean) {
 			continue
 		}
 
-		// CASE 2: full path match
-		match, err := filepath.Match(cleanPattern, path)
-		if err == nil && match {
-			if isDirPattern {
-				// must match a directory prefix
-				if strings.HasPrefix(path, cleanPattern+"/") || path == cleanPattern {
-					return true
-				}
-				continue
-			}
+		if match, _ := filepath.Match(p.clean, path); match {
 			return true
 		}
 
-		// CASE 3: basename fallback
-		match, err = filepath.Match(cleanPattern, base)
-		if err == nil && match && !isDirPattern {
-			return true
+		if !p.isDir {
+			if match, _ := filepath.Match(p.clean, base); match {
+				return true
+			}
 		}
 	}
 
