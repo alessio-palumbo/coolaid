@@ -14,6 +14,7 @@ var defaultIgnorePatterns = []string{
 	"dist/",
 	"build/",
 	"*.lock",
+	"*.min.js",
 }
 
 type pattern struct {
@@ -30,7 +31,7 @@ type Ignore struct {
 }
 
 func LoadIgnore(projectRoot string, userIgnorePatterns []string) (*Ignore, error) {
-	rawPatterns := append(defaultIgnorePatterns, userIgnorePatterns...)
+	patterns := append(defaultIgnorePatterns, userIgnorePatterns...)
 
 	files := []string{
 		filepath.Join(projectRoot, ".gitignore"),
@@ -51,15 +52,19 @@ func LoadIgnore(projectRoot string, userIgnorePatterns []string) (*Ignore, error
 				continue
 			}
 
-			rawPatterns = append(rawPatterns, line)
+			patterns = append(patterns, line)
 		}
 
 		file.Close()
 	}
 
-	// Precompute patterns
+	return NewIgnoreFromPatterns(patterns...), nil
+}
+
+// NewIgnoreFromPatterns  precomputes patterns for efficient matching.
+func NewIgnoreFromPatterns(patterns ...string) *Ignore {
 	var ig Ignore
-	for _, p := range rawPatterns {
+	for _, p := range patterns {
 		p = filepath.ToSlash(strings.TrimSpace(p))
 		if p == "" {
 			continue
@@ -88,7 +93,7 @@ func LoadIgnore(projectRoot string, userIgnorePatterns []string) (*Ignore, error
 		}
 	}
 
-	return &ig, nil
+	return &ig
 }
 
 func (i *Ignore) Match(path string) bool {

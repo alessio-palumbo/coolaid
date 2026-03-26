@@ -35,7 +35,7 @@ func main() {
 			command.AskCommand(llmClient),
 			command.SummarizeCommand(llmClient),
 			command.ExplainCommand(llmClient, store),
-			command.IndexCommand(llmClient, store, cfg.ConfigDir),
+			command.IndexCommand(llmClient, store, cfg),
 			command.SearchCommand(llmClient, store),
 			command.QueryCommand(llmClient, store),
 			command.BenchmarkCommand(llmClient, store),

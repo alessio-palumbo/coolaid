@@ -1,6 +1,7 @@
 package command
 
 import (
+	"ai-cli/internal/config"
 	"ai-cli/internal/indexer"
 	"ai-cli/internal/llm"
 	"ai-cli/internal/vector"
@@ -9,7 +10,7 @@ import (
 	"github.com/urfave/cli/v2"
 )
 
-func IndexCommand(llmClient *llm.Client, store *vector.Store, configDir string) *cli.Command {
+func IndexCommand(llmClient *llm.Client, store *vector.Store, cfg *config.Config) *cli.Command {
 	return &cli.Command{
 		Name:  "index",
 		Usage: "index the current repository",
@@ -19,7 +20,7 @@ func IndexCommand(llmClient *llm.Client, store *vector.Store, configDir string) 
 				return err
 			}
 
-			if err := indexer.Build(".", store, llmClient, configDir); err != nil {
+			if err := indexer.Build(".", store, llmClient, cfg); err != nil {
 				return err
 			}
 			if err := store.Save(); err != nil {

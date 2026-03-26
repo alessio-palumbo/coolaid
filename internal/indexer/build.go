@@ -1,17 +1,18 @@
 package indexer
 
 import (
+	"ai-cli/internal/config"
 	"ai-cli/internal/llm"
 	"ai-cli/internal/vector"
 )
 
-func Build(dir string, store *vector.Store, client *llm.Client, configDir string) error {
-	ignore, err := LoadIgnore(store.ProjectRoot, configDir)
+func Build(dir string, store *vector.Store, client *llm.Client, cfg *config.Config) error {
+	ignore, err := LoadIgnore(store.ProjectRoot, cfg.Index.IgnorePatterns)
 	if err != nil {
 		return err
 	}
 
-	files, err := Scan(store.ProjectRoot, ignore)
+	files, err := Scan(store.ProjectRoot, ignore, cfg.Extensions)
 	if err != nil {
 		return err
 	}
