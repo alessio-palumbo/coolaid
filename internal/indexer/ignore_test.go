@@ -13,7 +13,7 @@ func TestIgnoreMatch(t *testing.T) {
 	// create project .gitignore
 	err := os.WriteFile(
 		filepath.Join(project, ".gitignore"),
-		[]byte("vendor/\n*.log\n"),
+		[]byte("vendor/\n*.log\nvenv\n"),
 		0644,
 	)
 	if err != nil {
@@ -55,6 +55,7 @@ func TestIgnoreMatch(t *testing.T) {
 		{"docs/readme.md", true},
 		{"build.tmp", true},
 		{"cmd/server.go", false},
+		{"venv/lib/python3.12/site-packages/PIL/AvifImagePlugin.py", true},
 	}
 
 	for _, tt := range tests {

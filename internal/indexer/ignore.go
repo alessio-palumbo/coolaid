@@ -44,26 +44,53 @@ func LoadIgnore(projectRoot, configDir string) (*Ignore, error) {
 }
 
 func (i *Ignore) Match(path string) bool {
+	path = filepath.ToSlash(path)
+	base := filepath.Base(path)
+
 	for _, pattern := range i.patterns {
-		// directory rule
-		if strings.HasSuffix(pattern, "/") {
-			dir := strings.TrimSuffix(pattern, "/")
-			if strings.HasPrefix(path, dir+"/") {
-				return true
+		pattern = filepath.ToSlash(pattern)
+
+		isDirPattern := strings.HasSuffix(pattern, "/")
+		cleanPattern := strings.TrimSuffix(pattern, "/")
+
+		// CASE 1: pattern has no slash → match any path segment
+		if !strings.Contains(cleanPattern, "/") {
+			for seg := range strings.SplitSeq(path, "/") {
+				match, err := filepath.Match(cleanPattern, seg)
+				if err == nil && match {
+					// if directory-only pattern, ensure it's not matching a file
+					if isDirPattern {
+						// assume directory if not last segment or explicitly known
+						if seg != base {
+							return true
+						}
+						continue
+					}
+					return true
+				}
 			}
+			continue
 		}
 
-		// full path match
-		match, err := filepath.Match(pattern, path)
+		// CASE 2: full path match
+		match, err := filepath.Match(cleanPattern, path)
 		if err == nil && match {
+			if isDirPattern {
+				// must match a directory prefix
+				if strings.HasPrefix(path, cleanPattern+"/") || path == cleanPattern {
+					return true
+				}
+				continue
+			}
 			return true
 		}
 
-		// basename match
-		match, err = filepath.Match(pattern, filepath.Base(path))
-		if err == nil && match {
+		// CASE 3: basename fallback
+		match, err = filepath.Match(cleanPattern, base)
+		if err == nil && match && !isDirPattern {
 			return true
 		}
 	}
+
 	return false
 }
