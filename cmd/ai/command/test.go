@@ -39,12 +39,7 @@ func TestCommand(llmClient *llm.Client, store *vector.Store) *cli.Command {
 			}
 
 			signals := query.ExtractSignals(file, content)
-			queryVec, err := llmClient.Embed(signals)
-			if err != nil {
-				return err
-			}
-
-			results, err := store.SearchForMode("deep", queryVec)
+			results, err := embedPromptAndSearch(llmClient, store, signals, vector.SearchModeDeep)
 			if err != nil {
 				return err
 			}

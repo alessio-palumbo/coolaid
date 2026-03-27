@@ -38,6 +38,7 @@ func main() {
 			command.IndexCommand(llmClient, store, cfg),
 			command.SearchCommand(llmClient, store),
 			command.QueryCommand(llmClient, store),
+			command.ChatCommand(llmClient, store),
 			command.TestCommand(llmClient, store),
 			command.BenchmarkCommand(llmClient, store),
 		},

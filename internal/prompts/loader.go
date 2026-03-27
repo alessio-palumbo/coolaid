@@ -14,6 +14,7 @@ const (
 	TemplateExplain     promptTemplate = "explain.tmpl"
 	TemplateSummarize   promptTemplate = "summarize.tmpl"
 	TemplateQuery       promptTemplate = "query.tmpl"
+	TemplateChat        promptTemplate = "chat.tmpl"
 	TemplateTestGo      promptTemplate = "test-go.tmpl"
 	TemplateTestGeneric promptTemplate = "test-generic.tmpl"
 )

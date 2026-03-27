@@ -27,11 +27,8 @@ func ExplainCommand(llmClient *llm.Client, store *vector.Store) *cli.Command {
 
 			// Find dependencies chunks to pass as dependencies to LLM.
 			signals := query.ExtractSignals(file, data)
-			embedding, err := llmClient.Embed(signals)
-			if err != nil {
-				return err
-			}
-			results, err := store.Search(embedding, 8, false)
+
+			results, err := embedPromptAndSearch(llmClient, store, signals, vector.SearchModeBalanced)
 			if err != nil {
 				return err
 			}

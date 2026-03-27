@@ -18,6 +18,7 @@ const (
 
 var (
 	tagsEndpoint       = "/api/tags"
+	chatEndpoint       = "/api/chat"
 	generateEndpoint   = "/api/generate"
 	embeddingsEndpoint = "/api/embeddings"
 	contentTypeJSON    = "application/json"
@@ -41,6 +42,21 @@ type generateResponse struct {
 	Done     bool   `json:"done"`
 }
 
+type chatRequest struct {
+	Model    string        `json:"model"`
+	Messages []chatMessage `json:"messages"`
+}
+
+type chatResponse struct {
+	Message chatMessage `json:"message"`
+	Done    bool        `json:"done"`
+}
+
+type chatMessage struct {
+	Role    string `json:"role"`
+	Content string `json:"content"`
+}
+
 type tagsResponse struct {
 	Models []struct {
 		Name string `json:"name"`
@@ -59,51 +75,6 @@ func NewClient(cfg *config.Config) (*Client, error) {
 		return nil, err
 	}
 	return client, nil
-}
-
-func (c *Client) ping() error {
-	resp, err := c.client.Get(c.BaseURL + tagsEndpoint)
-	if err != nil {
-		return fmt.Errorf("failed to contact Ollama: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("ollama returned status %d", resp.StatusCode)
-	}
-
-	var tags tagsResponse
-	if err := json.NewDecoder(resp.Body).Decode(&tags); err != nil {
-		return fmt.Errorf("failed to decode Ollama tags: %w", err)
-	}
-
-	available := map[string]bool{}
-	for _, m := range tags.Models {
-		available[normalizeModel(m.Name)] = true
-	}
-	if !available[c.LLMModel] {
-		return fmt.Errorf("LLM model '%s' not installed", c.LLMModel)
-	}
-	if !available[c.EmbeddingsModel] {
-		return fmt.Errorf("embedding model '%s' not installed", c.EmbeddingsModel)
-	}
-
-	return nil
-}
-
-func normalizeModel(name string) string {
-	if i := strings.Index(name, ":"); i != -1 {
-		return name[:i]
-	}
-	return name
-}
-func (t *tagsResponse) contains(s string) bool {
-	for _, v := range t.Models {
-		if v.Name == s {
-			return true
-		}
-	}
-	return false
 }
 
 func (c *Client) GenerateStream(prompt string, writer io.Writer) error {
@@ -146,6 +117,45 @@ func (c *Client) GenerateStream(prompt string, writer io.Writer) error {
 	return nil
 }
 
+func (c *Client) ChatStream(prompt string, writer io.Writer) error {
+	reqBody := chatRequest{
+		Model:    c.LLMModel,
+		Messages: []chatMessage{{Role: "user", Content: prompt}},
+	}
+	data, err := json.Marshal(reqBody)
+	if err != nil {
+		return err
+	}
+
+	resp, err := c.post(chatEndpoint, data)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	decoder := json.NewDecoder(resp.Body)
+
+	for {
+		var chunk chatResponse
+		err := decoder.Decode(&chunk)
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return err
+		}
+
+		if chunk.Message.Content != "" {
+			_, _ = writer.Write([]byte(chunk.Message.Content))
+		}
+		if chunk.Done {
+			break
+		}
+	}
+
+	return nil
+}
+
 func (c *Client) post(endpoint string, data []byte) (*http.Response, error) {
 	resp, err := c.client.Post(c.BaseURL+endpoint, contentTypeJSON, bytes.NewBuffer(data))
 	if err != nil {
@@ -155,4 +165,41 @@ func (c *Client) post(endpoint string, data []byte) (*http.Response, error) {
 		return nil, fmt.Errorf("llm returned status %d", resp.StatusCode)
 	}
 	return resp, err
+}
+
+func (c *Client) ping() error {
+	resp, err := c.client.Get(c.BaseURL + tagsEndpoint)
+	if err != nil {
+		return fmt.Errorf("failed to contact Ollama: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("ollama returned status %d", resp.StatusCode)
+	}
+
+	var tags tagsResponse
+	if err := json.NewDecoder(resp.Body).Decode(&tags); err != nil {
+		return fmt.Errorf("failed to decode Ollama tags: %w", err)
+	}
+
+	available := map[string]bool{}
+	for _, m := range tags.Models {
+		available[normalizeModel(m.Name)] = true
+	}
+	if !available[c.LLMModel] {
+		return fmt.Errorf("LLM model '%s' not installed", c.LLMModel)
+	}
+	if !available[c.EmbeddingsModel] {
+		return fmt.Errorf("embedding model '%s' not installed", c.EmbeddingsModel)
+	}
+
+	return nil
+}
+
+func normalizeModel(name string) string {
+	if i := strings.Index(name, ":"); i != -1 {
+		return name[:i]
+	}
+	return name
 }
