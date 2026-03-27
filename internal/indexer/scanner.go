@@ -35,11 +35,32 @@ func Scan(dir string, ignore *Ignore, exts map[string]struct{}) ([]string, error
 	return files, err
 }
 
-func LoadFile(path string) (string, error) {
+func LoadFile(path string) ([]byte, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 
-	return string(data), nil
+	return data, nil
+}
+
+func isTextFile(path string) bool {
+	f, err := os.Open(path)
+	if err != nil {
+		return false
+	}
+	defer f.Close()
+
+	buf := make([]byte, 512)
+	n, _ := f.Read(buf)
+
+	return isLikelyText(buf[:n])
+}
+func isLikelyText(data []byte) bool {
+	for _, b := range data {
+		if b == 0 {
+			return false // binary
+		}
+	}
+	return true
 }

@@ -9,7 +9,7 @@ import (
 // ChunkGo extracts semantic chunks from Go source code.
 // Each chunk corresponds to a function or method and includes
 // its preceding comment and file path to improve embedding quality.
-func ChunkGo(path, src string) []Chunk {
+func ChunkGo(path string, src []byte) []Chunk {
 	fset := token.NewFileSet()
 	file, err := parser.ParseFile(fset, "", src, parser.ParseComments)
 	if err != nil {
@@ -25,23 +25,18 @@ func ChunkGo(path, src string) []Chunk {
 		}
 
 		startOffset := fset.Position(fn.Pos()).Offset
+		if fn.Doc != nil {
+			startOffset = fset.Position(fn.Doc.Pos()).Offset
+		}
 		endOffset := fset.Position(fn.End()).Offset
-		body := src[startOffset:endOffset]
 
 		startLine := fset.Position(fn.Pos()).Line
 		endLine := fset.Position(fn.End()).Line
 
-		var text string
-		if fn.Doc != nil {
-			text = formatChunk(path, startLine, endLine, fn.Doc.Text(), body)
-		} else {
-			text = formatChunk(path, startLine, endLine, body)
-		}
-
 		chunks = append(chunks, Chunk{
 			StartLine: startLine,
 			EndLine:   endLine,
-			Text:      text,
+			Text:      formatChunk(path, startLine, endLine, src[startOffset:endOffset]),
 		})
 	}
 

@@ -6,13 +6,13 @@ import (
 
 func TestChunkGo(t *testing.T) {
 	path := "a/b/c.go"
-	src := `
+	src := []byte(`
 	    package main
 
 	    func A() {}
 
 	    func B() {}
-	`
+	`)
 
 	chunks := ChunkGo(path, src)
 	if len(chunks) != 2 {

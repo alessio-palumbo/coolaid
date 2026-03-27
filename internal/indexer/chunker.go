@@ -1,8 +1,8 @@
 package indexer
 
 import (
-	"fmt"
 	"path/filepath"
+	"strconv"
 	"strings"
 )
 
@@ -18,7 +18,7 @@ type Chunk struct {
 	EndLine   int
 }
 
-func ChunkFile(path string, content string) []Chunk {
+func ChunkFile(path string, content []byte) []Chunk {
 	switch filepath.Ext(path) {
 	case ".go":
 		return ChunkGo(path, content)
@@ -29,12 +29,18 @@ func ChunkFile(path string, content string) []Chunk {
 
 // ChunkText splits arbitrary text into fixed-size chunks.
 // The file path and line numbers are included to preserve context for embeddings.
-func ChunkText(path string, content string) []Chunk {
-	var chunks []Chunk
+func ChunkText(path string, content []byte) []Chunk {
+	if len(content) == 0 {
+		return nil
+	}
+
 	startByte := 0
 	startLine := 1
 	charCount := 0
 	line := 1
+
+	// Pre-allocate approximate chunk capacity
+	chunks := make([]Chunk, 0, len(content)/defaultChunkCharacters+1)
 
 	for i := range len(content) {
 		charCount++
@@ -49,11 +55,10 @@ func ChunkText(path string, content string) []Chunk {
 				endByte--
 			}
 
-			body := content[startByte:endByte]
 			chunks = append(chunks, Chunk{
 				StartLine: startLine,
 				EndLine:   line,
-				Text:      formatChunk(path, startLine, line, body),
+				Text:      formatChunk(path, startLine, line, content[startByte:endByte]),
 			})
 
 			startByte = endByte
@@ -63,12 +68,11 @@ func ChunkText(path string, content string) []Chunk {
 	}
 
 	if startByte < len(content) {
-		body := content[startByte:]
-		if len(body) >= minChunkSize {
+		if charCount >= minChunkSize {
 			chunks = append(chunks, Chunk{
 				StartLine: startLine,
 				EndLine:   line,
-				Text:      formatChunk(path, startLine, line, body),
+				Text:      formatChunk(path, startLine, line, content[startByte:]),
 			})
 		}
 	}
@@ -76,25 +80,26 @@ func ChunkText(path string, content string) []Chunk {
 	return chunks
 }
 
-func formatChunk(path string, startLine, endLine int, text ...string) string {
+func formatChunk(path string, startLine, endLine int, body []byte) string {
+	const lineNumbersApproxLen = 32
+	totalSize := len(chunkPathPrefix) + len(path) + lineNumbersApproxLen + len(body)
+
 	var sb strings.Builder
-	lines := fmt.Sprintf("(lines %d-%d)", startLine, endLine)
-	totalSize := len(chunkPathPrefix) + len(path) + 1
-	totalSize += len(lines) + 1
-	for _, t := range text {
-		totalSize += len(t) + 1
-	}
 	sb.Grow(totalSize)
 
 	sb.WriteString(chunkPathPrefix)
 	sb.WriteString(path)
-	sb.WriteString(" ")
-	sb.WriteString(lines)
-	sb.WriteByte('\n')
 
-	for _, t := range text {
-		sb.WriteByte('\n')
-		sb.WriteString(t)
-	}
+	sb.WriteString(" (lines ")
+	// preallocate slice for line numbers
+	b := make([]byte, 0, lineNumbersApproxLen)
+	b = strconv.AppendInt(b, int64(startLine), 10)
+	b = append(b, '-')
+	b = strconv.AppendInt(b, int64(endLine), 10)
+	sb.Write(b)
+
+	sb.WriteString(")\n\n")
+	sb.Write(body)
+
 	return sb.String()
 }

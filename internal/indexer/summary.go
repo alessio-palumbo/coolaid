@@ -20,11 +20,12 @@ func NewSummaryBuilder() *SummaryBuilder {
 	return &SummaryBuilder{symbols: make(map[string]struct{})}
 }
 
-func (b *SummaryBuilder) AddFile(path, content string) {
+func (b *SummaryBuilder) AddFile(path string, content []byte) {
 	b.files = append(b.files, path)
 
 	if strings.HasSuffix(strings.ToLower(path), "readme.md") && b.readme == "" {
-		b.readme = content[:min(len(content), readmeFragmentMaxSize)]
+		n := min(len(content), readmeFragmentMaxSize)
+		b.readme = string(content[:n])
 	}
 
 	signals := query.ExtractSignals(path, content)

@@ -15,7 +15,7 @@ func TestExtractSignals(t *testing.T) {
         	}
         	`
 
-		out := ExtractSignals("main.go", src)
+		out := ExtractSignals("main.go", []byte(src))
 		if !strings.Contains(out, "LoadConfig") {
 			t.Errorf("expected Go extraction, got:\n%s", out)
 		}
@@ -28,7 +28,7 @@ func TestExtractSignals(t *testing.T) {
 		}
         	`
 
-		out := ExtractSignals("file.js", src)
+		out := ExtractSignals("file.js", []byte(src))
 		if !strings.Contains(out, "parseJSON") {
 			t.Errorf("expected text extraction, got:\n%s", out)
 		}
@@ -47,7 +47,7 @@ func Test_extractGoSignals(t *testing.T) {
 		}
 		`
 
-		out := extractGoSignals(src)
+		out := extractGoSignals([]byte(src))
 		expected := []string{"LoadConfig", "ConnectDB", "RunServer"}
 		for _, e := range expected {
 			if !strings.Contains(out, e) {
@@ -66,7 +66,7 @@ func Test_extractGoSignals(t *testing.T) {
 		}
 		`
 
-		out := extractGoSignals(src)
+		out := extractGoSignals([]byte(src))
 		expected := []string{"DoRequest", "Info"}
 		for _, e := range expected {
 			if !strings.Contains(out, e) {
@@ -90,7 +90,7 @@ func Test_extractGoSignals(t *testing.T) {
 		}
 		`
 
-		out := extractGoSignals(src)
+		out := extractGoSignals([]byte(src))
 		expected := []string{"client", "logger", "DoRequest", "Info"}
 		for _, e := range expected {
 			if !strings.Contains(out, e) {
@@ -110,7 +110,7 @@ func Test_extractGoSignals(t *testing.T) {
 		}
 		`
 
-		out := extractGoSignals(src)
+		out := extractGoSignals([]byte(src))
 		count := strings.Count(out, "DoRequest")
 		if count != 1 {
 			t.Errorf("expected 'Dorequest' once, got %d occurrences:\n%s", count, out)
@@ -125,7 +125,7 @@ func Test_extractTextSignals(t *testing.T) {
 		}
 		`
 
-		out := extractTextSignals(src)
+		out := extractTextSignals([]byte(src))
 		expected := []string{"loadConfig", "parseJSON", "readFile"}
 		for _, e := range expected {
 			if !strings.Contains(out, e) {
@@ -141,7 +141,7 @@ func Test_extractTextSignals(t *testing.T) {
 		loadConfig()
 		`
 
-		out := extractTextSignals(src)
+		out := extractTextSignals([]byte(src))
 		count := strings.Count(out, "loadConfig")
 		if count != 1 {
 			t.Errorf("expected 'loadConfig' once, got %d occurrences:\n%s", count, out)

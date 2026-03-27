@@ -17,7 +17,7 @@ import (
 //
 // The returned string is optimized for retrieval quality, not for display or
 // direct use in LLM prompts.
-func ExtractSignals(path, content string) string {
+func ExtractSignals(path string, content []byte) string {
 	switch filepath.Ext(path) {
 	case ".go":
 		return extractGoSignals(content)
@@ -28,11 +28,11 @@ func ExtractSignals(path, content string) string {
 
 // extractGoSignals extracts meaningful identifiers (function calls and definitions)
 // from Go source code using the AST.
-func extractGoSignals(src string) string {
+func extractGoSignals(src []byte) string {
 	fset := token.NewFileSet()
 	file, err := parser.ParseFile(fset, "", src, 0)
 	if err != nil {
-		return src // fallback
+		return string(src) // fallback
 	}
 
 	var out []string
@@ -67,13 +67,13 @@ func extractGoSignals(src string) string {
 
 // extractTextSignals extracts meaningful tokens from non-Go files.
 // It attempts to capture identifiers and function-like names.
-func extractTextSignals(src string) string {
-	matches := reIdentifier.FindAllString(src, -1)
+func extractTextSignals(src []byte) string {
+	indexes := reIdentifier.FindAllIndex(src, -1)
 
-	var out []string
+	out := make([]string, 0, len(indexes))
 	add := dedupingAdder(&out)
-	for _, m := range matches {
-		add(m)
+	for _, idx := range indexes {
+		add(string(src[idx[0]:idx[1]]))
 	}
 	return strings.Join(out, "\n")
 }

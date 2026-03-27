@@ -25,10 +25,8 @@ func ExplainCommand(llmClient *llm.Client, store *vector.Store) *cli.Command {
 				return err
 			}
 
-			content := string(data)
-
 			// Find dependencies chunks to pass as dependencies to LLM.
-			signals := query.ExtractSignals(file, content)
+			signals := query.ExtractSignals(file, data)
 			embedding, err := llmClient.Embed(signals)
 			if err != nil {
 				return err
@@ -45,7 +43,7 @@ func ExplainCommand(llmClient *llm.Client, store *vector.Store) *cli.Command {
 				}
 			}
 
-			content = fmt.Sprintf("file: %s\n\n", file) + content
+			content := fmt.Sprintf("file: %s\n\n", file) + string(data)
 			prompt, err := prompts.Render(&prompts.Config{Template: prompts.TemplateExplain}, content, results...)
 			if err != nil {
 				return err
