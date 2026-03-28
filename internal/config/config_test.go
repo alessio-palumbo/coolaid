@@ -32,10 +32,9 @@ ignore_patterns = []
 `),
 			wantCfg: func(home string) *Config {
 				cfg := &Config{}
-
 				cfg.LLM.Model = defaultLLMModel
 				cfg.LLM.EmbeddingModel = defaultEmbeddingModel
-				cfg.LLM.Temperature = 0.2
+				cfg.LLM.Temperature = defaultTemperature
 
 				cfg.Index.IncludeExtensions = []string{}
 				cfg.Index.IgnorePatterns = []string{}
@@ -45,8 +44,8 @@ ignore_patterns = []
 					cfg.Extensions[e] = struct{}{}
 				}
 
-				cfg.IndexesDir = filepath.Join(home, configDirName, indexesDirName)
-
+				cfg.ProjectRoot = configDirName
+				cfg.StoreDir = filepath.Join(home, configDirName, storeDirName)
 				return cfg
 			},
 		},
@@ -58,7 +57,6 @@ ignore_patterns = []
 				}
 
 				configPath := filepath.Join(configDir, configFileName)
-
 				custom := strings.TrimSpace(`
 [llm]
 model = 'custom-model'
@@ -83,7 +81,6 @@ ignore_patterns = ['node_modules/']
 `),
 			wantCfg: func(home string) *Config {
 				cfg := &Config{}
-
 				cfg.LLM.Model = "custom-model"
 				cfg.LLM.EmbeddingModel = "custom-embed"
 				cfg.LLM.Temperature = 0.5
@@ -97,8 +94,8 @@ ignore_patterns = ['node_modules/']
 				}
 				cfg.Extensions[".rs"] = struct{}{}
 
-				cfg.IndexesDir = filepath.Join(home, configDirName, indexesDirName)
-
+				cfg.ProjectRoot = configDirName
+				cfg.StoreDir = filepath.Join(home, configDirName, storeDirName)
 				return cfg
 			},
 		},
@@ -129,7 +126,7 @@ ignore_patterns = ['node_modules/']
 
 			assert.Equal(t, want.LLM, cfg.LLM)
 			assert.Equal(t, want.Index, cfg.Index)
-			assert.Equal(t, want.IndexesDir, cfg.IndexesDir)
+			assert.Equal(t, want.StoreDir, cfg.StoreDir)
 
 			// compare maps safely
 			assert.Equal(t, want.Extensions, cfg.Extensions)

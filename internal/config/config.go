@@ -11,11 +11,12 @@ import (
 
 const (
 	configDirName  = ".ai"
-	indexesDirName = "indexes"
+	storeDirName   = "indexes"
 	configFileName = "config.toml"
 
 	defaultLLMModel       = "llama3"
 	defaultEmbeddingModel = "nomic-embed-text"
+	defaultTemperature    = 0.2
 )
 
 const maxFileSize = 200 * 1024 // 200 KB
@@ -38,8 +39,10 @@ var defaultExtensions = []string{
 }
 
 type Config struct {
-	IndexesDir string              `toml:"-"`
-	Extensions map[string]struct{} `toml:"-"`
+	StoreDir    string              `toml:"-"`
+	ProjectRoot string              `toml:"-"`
+	DBName      string              `toml:"-"`
+	Extensions  map[string]struct{} `toml:"-"`
 
 	LLM struct {
 		Model          string  `toml:"model"`
@@ -60,11 +63,11 @@ func LoadOrCreate() (*Config, error) {
 	}
 
 	configDir := filepath.Join(home, configDirName)
-	indexesDir := filepath.Join(configDir, indexesDirName)
+	storeDir := filepath.Join(configDir, storeDirName)
 	configPath := filepath.Join(configDir, configFileName)
 
 	// Ensure directories exist
-	if err := os.MkdirAll(indexesDir, 0755); err != nil {
+	if err := os.MkdirAll(storeDir, 0755); err != nil {
 		return nil, err
 	}
 
@@ -80,12 +83,37 @@ func LoadOrCreate() (*Config, error) {
 		return nil, err
 	}
 
-	c.IndexesDir = indexesDir
-	c.Extensions = c.resolveExtensions()
+	projectRoot, err := projectRoot()
+	if err != nil {
+		return nil, err
+	}
+	c.ProjectRoot = projectRoot
+	c.StoreDir = storeDir
+
+	if err := c.Apply(); err != nil {
+		return nil, err
+	}
 	return c, nil
 }
 
-func (c *Config) Validate() error {
+func (c *Config) Apply() error {
+	c.resolveExtensions()
+	return c.validate()
+}
+
+func (c *Config) resolveExtensions() {
+	c.Extensions = make(map[string]struct{}, len(defaultExtensions))
+	for _, e := range defaultExtensions {
+		c.Extensions[e] = struct{}{}
+	}
+	for _, e := range c.Index.IncludeExtensions {
+		if ext := normalizeExt(e); ext != "" {
+			c.Extensions[ext] = struct{}{}
+		}
+	}
+}
+
+func (c *Config) validate() error {
 	if c.LLM.Model == "" {
 		return fmt.Errorf("llm model is required")
 	}
@@ -95,30 +123,20 @@ func (c *Config) Validate() error {
 	if c.LLM.Temperature < 0 || c.LLM.Temperature > 1 {
 		return fmt.Errorf("temperature must be between 0 and 1")
 	}
+	if c.ProjectRoot == "" {
+		return fmt.Errorf("project root is required")
+	}
+	if c.StoreDir == "" {
+		return fmt.Errorf("store directory is required to store vector DBs")
+	}
 	return nil
-}
-
-func (c *Config) resolveExtensions() map[string]struct{} {
-	result := make(map[string]struct{}, len(defaultExtensions))
-
-	for _, e := range defaultExtensions {
-		result[e] = struct{}{}
-	}
-
-	for _, e := range c.Index.IncludeExtensions {
-		if ext := normalizeExt(e); ext != "" {
-			result[ext] = struct{}{}
-		}
-	}
-
-	return result
 }
 
 func writeDefaultConfig(path string) error {
 	c := Config{}
 	c.LLM.Model = defaultLLMModel
 	c.LLM.EmbeddingModel = defaultEmbeddingModel
-	c.LLM.Temperature = 0.2
+	c.LLM.Temperature = defaultTemperature
 
 	b, err := toml.Marshal(c)
 	if err != nil {
@@ -139,6 +157,27 @@ func loadConfig(cfgPath string) (*Config, error) {
 	}
 
 	return &cfg, nil
+}
+
+func projectRoot() (string, error) {
+	dir, err := os.Getwd()
+	if err != nil {
+		return "", err
+	}
+
+	for {
+		git := filepath.Join(dir, ".git")
+		if _, err := os.Stat(git); err == nil {
+			return dir, nil
+		}
+
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			return dir, nil // reached filesystem root
+		}
+
+		dir = parent
+	}
 }
 
 func fileExists(path string) bool {

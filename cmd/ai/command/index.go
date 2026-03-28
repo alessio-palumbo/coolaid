@@ -20,14 +20,16 @@ func IndexCommand(llmClient *llm.Client, store *vector.Store, cfg *config.Config
 				return err
 			}
 
+			fmt.Println("Indexing project at", store.ProjectRoot)
 			if err := indexer.Build(".", store, llmClient, cfg); err != nil {
 				return err
 			}
+
 			if err := store.Save(); err != nil {
 				return err
 			}
+			fmt.Printf("Indexed %d chunks in %s\n", len(store.Items), store.DBPath)
 
-			fmt.Printf("Indexed %d chunks\n", len(store.Items))
 			return nil
 		},
 	}

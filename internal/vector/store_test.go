@@ -1,9 +1,13 @@
 package vector
 
 import (
+	"ai-cli/internal/config"
 	"fmt"
 	"math/rand/v2"
+	"path/filepath"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func TestJoinResult(t *testing.T) {
@@ -39,42 +43,33 @@ func C()
 
 ---
 `
-	if got := JoinResults(results...); got != want {
-		t.Fatalf("expected %s got %s", got, want)
-	}
 
+	assert.Equal(t, want, JoinResults(results...))
 }
 
 func TestNewStore(t *testing.T) {
-	// Test initialisation.
+	// Test initialisation with hash.
 	store, tmpDir := newTestStore(t)
-	if store == nil {
-		t.Fatal("expected store to be initialized")
-	}
-	if store.db == nil {
-		t.Fatal("expected database connection")
-	}
+	assert.NotNil(t, store)
+	assert.NotNil(t, store.db)
 
 	// Test initialisation with data.
 	store.Add("file.go", "func A()", 1, 1, []float64{1, 0})
-	if err := store.Save(); err != nil {
-		t.Fatal(err)
-	}
+	assert.NoError(t, store.Save())
 
 	// Reload store
-	store2, err := NewStore(tmpDir)
-	if err != nil {
-		t.Fatal(err)
-	}
+	store2, err := NewStore(&config.Config{StoreDir: tmpDir})
+	assert.NoError(t, err)
 	defer store2.Close()
 
-	store2.EnsureLoaded()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(store2.Items) != 1 {
-		t.Fatalf("expected 1 item, got %d", len(store2.Items))
-	}
+	assert.NoError(t, store2.EnsureLoaded())
+	assert.Equal(t, len(store2.Items), 1)
+
+	// With DB name set
+	store, _ = newTestStore(t, &config.Config{DBName: "test_db"})
+	assert.NotNil(t, store)
+	assert.NotNil(t, store.db)
+	assert.Equal(t, filepath.Base(store.DBPath), "test_db.sqlite")
 }
 
 func TestSearch(t *testing.T) {
@@ -117,15 +112,10 @@ func TestSearch(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			query := []float64{1, 0}
 			results, _ := store.Search(query, tc.k, false)
-			if len(results) != tc.expectN {
-				t.Fatalf("expected %d result, got %d", tc.expectN, len(results))
-			}
+			assert.Equal(t, tc.expectN, len(results))
 			for i := range results {
-				if got, want := results[i].Content, tc.expectContent[i]; got != want {
-					t.Fatalf("expected %s to rank %d, got %s", got, i, want)
-				}
+				assert.Equal(t, tc.expectContent[i], results[i].Content)
 			}
-
 		})
 	}
 }

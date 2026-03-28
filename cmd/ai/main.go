@@ -22,7 +22,7 @@ func main() {
 		log.Fatal(err)
 	}
 
-	store, err := vector.NewStore(cfg.IndexesDir)
+	store, err := vector.NewStore(cfg)
 	if err != nil {
 		log.Fatal(err)
 	}

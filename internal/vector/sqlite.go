@@ -4,7 +4,15 @@ import (
 	"bytes"
 	"database/sql"
 	"encoding/binary"
+	"fmt"
 	"time"
+)
+
+const metaVersion = "v1"
+
+var (
+	ErrReindexRequired = fmt.Errorf("index is outdated: rebuild required")
+	ErrNotIndexed      = fmt.Errorf("not indexed: index must be built")
 )
 
 // Clear deletes all embeddings and summary data from the DB.
@@ -46,6 +54,20 @@ func (s *Store) Save() error {
 		}
 	}()
 
+	_, err = tx.Exec(`
+		INSERT INTO meta (id, project_root, config_hash, version, created_at)
+		VALUES (1, ?, ?, ?, ?)
+		ON CONFLICT(id) DO UPDATE SET
+			project_root = excluded.project_root,
+			config_hash  = excluded.config_hash,
+			version      = excluded.version,
+			created_at   = excluded.created_at
+		`, s.ProjectRoot, s.configHash, metaVersion, s.now().Format(time.RFC3339),
+	)
+	if err != nil {
+		return err
+	}
+
 	stmt, err := tx.Prepare(`
 	    INSERT INTO embeddings(filepath, startline, endline, content, embedding)
 	    VALUES(?, ?, ?, ?, ?)
@@ -72,12 +94,12 @@ func (s *Store) Save() error {
 	if s.Summary != "" {
 		_, err := tx.Exec(`
 		INSERT INTO summary (project_root, content, updated_at)
-		VALUES (?, ?, datetime('now'))
+		VALUES (?, ?, ?)
 		ON CONFLICT(project_root)
 		DO UPDATE SET
 			content = excluded.content,
 			updated_at = excluded.updated_at
-			`, s.ProjectRoot, s.Summary)
+			`, s.ProjectRoot, s.Summary, s.now().Format(time.RFC3339))
 		if err != nil {
 			return err
 		}
@@ -90,6 +112,10 @@ func (s *Store) Save() error {
 // Prefer using EnsureLoaded() to lazy load and avoid re-loading the DB.
 // Use Load() to force re-load the DB, if needed.
 func (s *Store) Load() error {
+	if err := s.CheckIndex(); err != nil {
+		return err
+	}
+
 	rows, err := s.db.Query(`
 	    SELECT filepath, startline, endline, content, embedding
 	    FROM embeddings
@@ -122,6 +148,14 @@ func (s *Store) Load() error {
 		items = append(items, item)
 	}
 
+	if err := rows.Err(); err != nil {
+		return err
+	}
+
+	if len(items) == 0 {
+		return ErrNotIndexed
+	}
+
 	summary, err := s.loadSummary()
 	if err != nil {
 		return err
@@ -130,6 +164,40 @@ func (s *Store) Load() error {
 	s.Items = items
 	s.Summary = summary
 	s.loaded = true
+	return nil
+}
+
+// CheckIndex checks that an index has been build and it's not
+// out of date. If a version change or the config hash does not
+// match it return an error prompting for an index rebuild.
+func (s *Store) CheckIndex() error {
+	var (
+		root       string
+		version    string
+		configHash *string
+	)
+
+	err := s.db.QueryRow(`
+		SELECT project_root, version, config_hash
+		FROM meta
+		LIMIT 1
+	`).Scan(&root, &version, &configHash)
+
+	switch err {
+	case nil:
+	case sql.ErrNoRows:
+		return ErrNotIndexed
+	default:
+		return err
+	}
+
+	if version != metaVersion {
+		return ErrReindexRequired
+	}
+	if configHash == nil || *configHash != s.configHash {
+		return ErrReindexRequired
+	}
+
 	return nil
 }
 
@@ -175,29 +243,73 @@ func (s *Store) init() error {
 
 // ensureMetadata creates the meta table if it does not exist
 // and, if needed, writes the project_root details.
+// If the version is out of date or the config hash has changed
+// it returns an error prompting an index rebuild.
 func (s *Store) ensureMetadata() error {
-	_, err := s.db.Exec(`
-	    CREATE TABLE IF NOT EXISTS meta (
-		project_root TEXT PRIMARY KEY,
-		created_at   TEXT
-	    )
-	`)
+	if err := s.createMeta(); err != nil {
+		return err
+	}
+
+	// Rebuild table after latest schema change.
+	hasVersion, err := hasColumn(s.db, "meta", "version")
 	if err != nil {
 		return err
 	}
-
-	var root string
-	err = s.db.QueryRow(`SELECT project_root FROM meta LIMIT 1`).Scan(&root)
-	if err == sql.ErrNoRows {
-		_, err = s.db.Exec(
-			`INSERT INTO meta(project_root, created_at) VALUES (?, ?)`,
-			s.ProjectRoot,
-			time.Now().UTC().Format(time.RFC3339),
-		)
-		return err
+	if !hasVersion {
+		// schema too old → reset
+		return s.resetMetaTable()
 	}
 
+	return nil
+}
+
+func (s *Store) createMeta() error {
+	_, err := s.db.Exec(`
+	    CREATE TABLE IF NOT EXISTS meta (
+		id           INTEGER PRIMARY KEY CHECK (id = 1),
+		project_root TEXT NOT NULL,
+		config_hash  TEXT,
+		version      TEXT NOT NULL DEFAULT 'v1',
+		created_at   TEXT NOT NULL
+	    )
+	`)
 	return err
+}
+
+func (s *Store) resetMetaTable() error {
+	_, err := s.db.Exec(`DROP TABLE IF EXISTS meta`)
+	if err != nil {
+		return err
+	}
+	return s.createMeta()
+}
+
+func hasColumn(db *sql.DB, table, column string) (bool, error) {
+	rows, err := db.Query(`PRAGMA table_info(` + table + `)`)
+	if err != nil {
+		return false, err
+	}
+	defer rows.Close()
+
+	var (
+		cid       int
+		name      string
+		colType   string
+		notnull   int
+		dfltValue any
+		pk        int
+	)
+
+	for rows.Next() {
+		if err := rows.Scan(&cid, &name, &colType, &notnull, &dfltValue, &pk); err != nil {
+			return false, err
+		}
+		if name == column {
+			return true, nil
+		}
+	}
+
+	return false, nil
 }
 
 // encodeEmbedding parses a vector slice into a blob for storage.

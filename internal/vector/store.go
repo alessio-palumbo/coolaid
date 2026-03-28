@@ -1,6 +1,7 @@
 package vector
 
 import (
+	"ai-cli/internal/config"
 	"container/heap"
 	"crypto/sha1"
 	"database/sql"
@@ -10,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"time"
 
 	_ "github.com/mattn/go-sqlite3"
 )
@@ -44,9 +46,13 @@ type Result struct {
 // Store allows storage and retrieval of Items and Summary
 // for an indexed repository or folder.
 type Store struct {
-	db          *sql.DB
-	loaded      bool
+	db         *sql.DB
+	now        func() time.Time
+	loaded     bool
+	configHash string
+
 	ProjectRoot string
+	DBPath      string
 	Items       []Item
 	Summary     string
 }
@@ -70,22 +76,28 @@ func JoinResults(results ...Result) string {
 // NewStore creates and initializes a vector Store backed by SQLite.
 // It opens the database, ensures the required tables exist, and loads
 // the stored embeddings into memory so they can be searched efficiently.
-func NewStore(indexesDir string) (*Store, error) {
-	projectRoot, err := projectRoot()
+func NewStore(cfg *config.Config) (*Store, error) {
+	if cfg.DBName == "" {
+		cfg.DBName = projectRootHash(cfg.ProjectRoot)
+	}
+	dbPath := filepath.Join(cfg.StoreDir, cfg.DBName+".sqlite")
+	db, err := openDB(dbPath)
 	if err != nil {
 		return nil, err
 	}
 
-	db, err := openDB(indexesDir, projectRoot)
-	if err != nil {
-		return nil, err
+	s := &Store{
+		db:          db,
+		now:         func() time.Time { return time.Now().UTC() },
+		configHash:  computeConfigHash(cfg),
+		ProjectRoot: cfg.ProjectRoot,
+		DBPath:      dbPath,
 	}
-
-	s := &Store{db: db, ProjectRoot: projectRoot}
 	if err := s.init(); err != nil {
 		db.Close()
 		return nil, err
 	}
+
 	return s, nil
 }
 
@@ -234,11 +246,12 @@ func mmr(results []Result, k int, lambda float64) []Result {
 	return selected
 }
 
-func openDB(indexesDir, projectRoot string) (*sql.DB, error) {
+func projectRootHash(projectRoot string) string {
 	hash := sha1.Sum([]byte(projectRoot))
-	name := hex.EncodeToString(hash[:8])
-	path := filepath.Join(indexesDir, name+".sqlite")
+	return hex.EncodeToString(hash[:8])
+}
 
+func openDB(path string) (*sql.DB, error) {
 	err := os.MkdirAll(filepath.Dir(path), 0755)
 	if err != nil {
 		return nil, err
@@ -246,23 +259,15 @@ func openDB(indexesDir, projectRoot string) (*sql.DB, error) {
 	return sql.Open("sqlite3", path)
 }
 
-func projectRoot() (string, error) {
-	dir, err := os.Getwd()
-	if err != nil {
-		return "", err
+func computeConfigHash(cfg *config.Config) string {
+	h := sha1.New()
+
+	for _, ext := range cfg.Index.IncludeExtensions {
+		h.Write([]byte(ext))
+	}
+	for _, p := range cfg.Index.IgnorePatterns {
+		h.Write([]byte(p))
 	}
 
-	for {
-		git := filepath.Join(dir, ".git")
-		if _, err := os.Stat(git); err == nil {
-			return dir, nil
-		}
-
-		parent := filepath.Dir(dir)
-		if parent == dir {
-			return dir, nil // reached filesystem root
-		}
-
-		dir = parent
-	}
+	return hex.EncodeToString(h.Sum(nil))
 }
