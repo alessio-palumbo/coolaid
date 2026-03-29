@@ -2,10 +2,12 @@ package indexer
 
 import (
 	"io/fs"
-	"os"
+	"log/slog"
 	"path/filepath"
 	"strings"
 )
+
+const maxFileSize = 5 * 1024 * 1024 // 5MB
 
 var specialFiles = map[string]struct{}{
 	"Dockerfile": {},
@@ -15,8 +17,26 @@ var specialFiles = map[string]struct{}{
 func Scan(dir string, ignore *Ignore, exts map[string]struct{}) ([]string, error) {
 	var files []string
 	err := filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
-		if ignore.Match(path) {
-			if d.IsDir() {
+		if err != nil {
+			slog.Debug("filepath error, skipping", slog.String("error", err.Error()))
+			return nil
+		}
+
+		// Skip files that are too big and might block the pipeline.
+		info, err := d.Info()
+		if err == nil && info.Size() > maxFileSize {
+			return nil
+		}
+
+		// Use relative path for matching as ignore rules are project-relative.
+		relPath, err := filepath.Rel(dir, path)
+		if err != nil {
+			return err
+		}
+
+		isDir := d.IsDir()
+		if ignore.Match(relPath, isDir) {
+			if isDir {
 				// Skip entire subtree
 				return filepath.SkipDir
 			}
@@ -25,6 +45,7 @@ func Scan(dir string, ignore *Ignore, exts map[string]struct{}) ([]string, error
 
 		if _, ok := specialFiles[filepath.Base(path)]; ok {
 			files = append(files, path)
+			return nil
 		}
 		if _, ok := exts[strings.ToLower(filepath.Ext(path))]; ok {
 			files = append(files, path)
@@ -33,34 +54,4 @@ func Scan(dir string, ignore *Ignore, exts map[string]struct{}) ([]string, error
 	})
 
 	return files, err
-}
-
-func LoadFile(path string) ([]byte, error) {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return nil, err
-	}
-
-	return data, nil
-}
-
-func isTextFile(path string) bool {
-	f, err := os.Open(path)
-	if err != nil {
-		return false
-	}
-	defer f.Close()
-
-	buf := make([]byte, 512)
-	n, _ := f.Read(buf)
-
-	return isLikelyText(buf[:n])
-}
-func isLikelyText(data []byte) bool {
-	for _, b := range data {
-		if b == 0 {
-			return false // binary
-		}
-	}
-	return true
 }

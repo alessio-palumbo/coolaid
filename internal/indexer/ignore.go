@@ -18,18 +18,29 @@ var defaultIgnorePatterns = []string{
 }
 
 type pattern struct {
-	clean    string
-	isDir    bool
-	hasSlash bool
-	isSimple bool
+	clean      string
+	isDir      bool
+	isCompound bool
+	isSimple   bool
+	negated    bool
 }
 
 type Ignore struct {
-	segmentSimple []pattern
-	segmentGlob   []pattern
-	pathPatterns  []pattern
+	patterns []pattern
 }
 
+// LoadIgnore builds an Ignore matcher by combining default patterns,
+// user-provided patterns, and ignore files found in the project root.
+//
+// Patterns are loaded in the following order (lowest to highest precedence):
+//  1. defaultIgnorePatterns
+//  2. userIgnorePatterns
+//  3. .gitignore
+//  4. .aiignore
+//
+// Lines that are empty or start with '#' are ignored.
+// Patterns are passed as-is to NewIgnoreFromPatterns and evaluated in order,
+// where the last matching rule wins (including support for '!' negation).
 func LoadIgnore(projectRoot string, userIgnorePatterns []string) (*Ignore, error) {
 	patterns := append(defaultIgnorePatterns, userIgnorePatterns...)
 
@@ -61,7 +72,7 @@ func LoadIgnore(projectRoot string, userIgnorePatterns []string) (*Ignore, error
 	return NewIgnoreFromPatterns(patterns...), nil
 }
 
-// NewIgnoreFromPatterns  precomputes patterns for efficient matching.
+// NewIgnoreFromPatterns precomputes patterns for efficient matching.
 func NewIgnoreFromPatterns(patterns ...string) *Ignore {
 	var ig Ignore
 	for _, p := range patterns {
@@ -70,68 +81,95 @@ func NewIgnoreFromPatterns(patterns ...string) *Ignore {
 			continue
 		}
 
+		negated := strings.HasPrefix(p, "!")
+		if negated {
+			p = strings.TrimPrefix(p, "!")
+		}
+
 		isDir := strings.HasSuffix(p, "/")
 		clean := strings.TrimSuffix(p, "/")
-		hasSlash := strings.Contains(clean, "/")
+		isCompound := strings.Contains(clean, "/")
 		isSimple := !strings.ContainsAny(clean, "*?[]")
 
-		pt := pattern{
-			clean:    clean,
-			isDir:    isDir,
-			hasSlash: hasSlash,
-			isSimple: isSimple,
-		}
-
-		if !hasSlash {
-			if isSimple {
-				ig.segmentSimple = append(ig.segmentSimple, pt)
-			} else {
-				ig.segmentGlob = append(ig.segmentGlob, pt)
-			}
-		} else {
-			ig.pathPatterns = append(ig.pathPatterns, pt)
-		}
+		ig.patterns = append(ig.patterns, pattern{
+			clean:      clean,
+			isDir:      isDir,
+			isCompound: isCompound,
+			isSimple:   isSimple,
+			negated:    negated,
+		})
 	}
 
 	return &ig
 }
 
-func (i *Ignore) Match(path string) bool {
+// Match reports whether the given path should be ignored.
+//
+// Paths are matched using gitignore-like semantics:
+//   - All patterns are evaluated in order
+//   - If a pattern matches, it overrides the previous state
+//   - Negated patterns ('!') re-include paths
+//   - The final matching rule determines the result
+//
+// The path must be relative and use '/' as separator (automatically normalized).
+// Match does not short-circuit and always evaluates all patterns to ensure
+// correct handling of negations.
+func (i *Ignore) Match(path string, isDir bool) bool {
 	path = filepath.ToSlash(path)
 	base := filepath.Base(path)
 
-	for _, p := range i.segmentSimple {
-		for seg := range strings.SplitSeq(path, "/") {
-			if seg == p.clean {
-				return true
+	ignored := false
+
+	for _, p := range i.patterns {
+		matched := false
+
+		if !p.isCompound {
+			for seg := range strings.SplitSeq(path, "/") {
+				if p.isSimple {
+					matched = seg == p.clean
+				} else {
+					if ok, _ := filepath.Match(p.clean, seg); ok {
+						matched = true
+					}
+				}
+				if matched {
+					if p.clean == base && p.isDir != isDir {
+						matched = false
+					}
+					break
+				}
+			}
+		} else {
+			// directory-specific match, exact dir or anything under it
+			if p.isDir && isDir {
+				if path == p.clean || strings.HasPrefix(path, p.clean+"/") {
+					matched = true
+				}
+			}
+
+			// full path match (applies to all patterns)
+			if !matched {
+				if ok, _ := filepath.Match(p.clean, path); ok {
+					matched = true
+				}
+			}
+
+			// basename match (files only)
+			if !matched && !p.isDir {
+				if ok, _ := filepath.Match(p.clean, base); ok {
+					matched = true
+				}
+			}
+		}
+
+		if matched {
+			if p.negated {
+				ignored = false
+			} else {
+				ignored = true
 			}
 		}
 	}
 
-	for _, p := range i.segmentGlob {
-		for seg := range strings.SplitSeq(path, "/") {
-			if match, _ := filepath.Match(p.clean, seg); match {
-				return true
-			}
-		}
-	}
-
-	for _, p := range i.pathPatterns {
-		// fast prefix reject for dir patterns
-		if p.isDir && !strings.HasPrefix(path, p.clean) {
-			continue
-		}
-
-		if match, _ := filepath.Match(p.clean, path); match {
-			return true
-		}
-
-		if !p.isDir {
-			if match, _ := filepath.Match(p.clean, base); match {
-				return true
-			}
-		}
-	}
-
-	return false
+	return ignored
 }

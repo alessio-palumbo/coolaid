@@ -109,7 +109,7 @@ func (p *EmbedPipeline) collector() {
 			p.done.Add(1)
 
 			info, _ := os.Stat(res.file)
-			fmt.Printf("\r%-*s", 150, fmt.Sprintf("Indexing files: %d/%d (file: %s, [%d bytes])", p.done.Load(), p.total, res.file, info.Size()))
+			fmt.Printf("\r%-*s", 150, fmt.Sprintf("Indexing files: %d/%d (file: %s [%d bytes])", p.done.Load(), p.total, res.file, info.Size()))
 		}
 	}
 	fmt.Println()

@@ -4,6 +4,7 @@ import (
 	"ai-cli/internal/config"
 	"ai-cli/internal/llm"
 	"ai-cli/internal/vector"
+	"os"
 )
 
 func Build(dir string, store *vector.Store, client *llm.Client, cfg *config.Config) error {
@@ -33,4 +34,13 @@ func Build(dir string, store *vector.Store, client *llm.Client, cfg *config.Conf
 	pipeline.Wait()
 	store.AddSummary(summaryBuilder.Build())
 	return nil
+}
+
+func LoadFile(path string) ([]byte, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+
+	return data, nil
 }
