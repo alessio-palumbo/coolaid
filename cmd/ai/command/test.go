@@ -15,7 +15,7 @@ func TestCommand(client *ai.Client) *cli.Command {
 			target := c.Args().First()
 			result, err := client.GenerateTests(c.Context, target, ai.WithRetrievalMode(ai.RetrievalBalanced))
 			if err != nil {
-				return err
+				return catchIndexError(err)
 			}
 			if result.Status.NoResults {
 				fmt.Println("No relevant results found")

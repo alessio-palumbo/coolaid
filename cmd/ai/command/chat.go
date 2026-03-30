@@ -32,7 +32,7 @@ func ChatCommand(client *ai.Client) *cli.Command {
 				}
 
 				if err := client.Chat(c.Context, input, ai.WithRetrievalMode(ai.RetrievalFast)); err != nil {
-					return err
+					return catchIndexError(err)
 				}
 				fmt.Println()
 			}

@@ -90,12 +90,12 @@ func TestLoad(t *testing.T) {
 	require.Equal(t, "hello", s.Summary)
 }
 
-func TestCheckIndex(t *testing.T) {
+func TestValidateIndex(t *testing.T) {
 	now := time.Now()
 
 	t.Run("no meta row → ErrNotIndexed", func(t *testing.T) {
 		s, _ := newTestStore(t)
-		require.ErrorIs(t, s.CheckIndex(), ErrNotIndexed)
+		require.ErrorIs(t, s.ValidateIndex(), ErrNotIndexed)
 	})
 
 	t.Run("valid index", func(t *testing.T) {
@@ -108,7 +108,7 @@ func TestCheckIndex(t *testing.T) {
 		`, "/project", "abc", metaVersion, now.Format(time.RFC3339))
 
 		assert.NoError(t, err)
-		require.NoError(t, s.CheckIndex())
+		require.NoError(t, s.ValidateIndex())
 	})
 
 	t.Run("version mismatch → ErrReindexRequired", func(t *testing.T) {
@@ -120,7 +120,7 @@ func TestCheckIndex(t *testing.T) {
 			VALUES (1, ?, ?, ?, ?)
 		`, "/project", "abc", "old-version", now.Format(time.RFC3339))
 		assert.NoError(t, err)
-		require.ErrorIs(t, s.CheckIndex(), ErrReindexRequired)
+		require.ErrorIs(t, s.ValidateIndex(), ErrReindexRequired)
 	})
 
 	t.Run("config hash mismatch → ErrReindexRequired", func(t *testing.T) {
@@ -132,7 +132,7 @@ func TestCheckIndex(t *testing.T) {
 			VALUES (1, ?, ?, ?, ?)
 		`, "/project", "different", metaVersion, now.Format(time.RFC3339))
 		assert.NoError(t, err)
-		require.ErrorIs(t, s.CheckIndex(), ErrReindexRequired)
+		require.ErrorIs(t, s.ValidateIndex(), ErrReindexRequired)
 	})
 
 	t.Run("null config hash → ErrReindexRequired", func(t *testing.T) {
@@ -144,7 +144,7 @@ func TestCheckIndex(t *testing.T) {
 			VALUES (1, ?, NULL, ?, ?)
 		`, "/project", metaVersion, now.Format(time.RFC3339))
 		assert.NoError(t, err)
-		require.ErrorIs(t, s.CheckIndex(), ErrReindexRequired)
+		require.ErrorIs(t, s.ValidateIndex(), ErrReindexRequired)
 	})
 }
 

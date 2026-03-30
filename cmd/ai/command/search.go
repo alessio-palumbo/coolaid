@@ -29,7 +29,7 @@ func SearchCommand(client *ai.Client) *cli.Command {
 
 			result, err := client.Search(c.Context, prompt, ai.WithTopK(c.Int("k")), ai.WithMMR(c.Bool("mmr")))
 			if err != nil {
-				return err
+				return catchIndexError(err)
 			}
 			if result.Status.NoResults {
 				fmt.Println("No relevant results found")

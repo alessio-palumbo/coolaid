@@ -38,5 +38,8 @@ func main() {
 		},
 	}
 
-	app.Run(os.Args)
+	if err := app.Run(os.Args); err != nil {
+		client.Close()
+		log.Fatal(err)
+	}
 }

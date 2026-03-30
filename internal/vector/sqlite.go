@@ -112,7 +112,7 @@ func (s *Store) Save() error {
 // Prefer using EnsureLoaded() to lazy load and avoid re-loading the DB.
 // Use Load() to force re-load the DB, if needed.
 func (s *Store) Load() error {
-	if err := s.CheckIndex(); err != nil {
+	if err := s.ValidateIndex(); err != nil {
 		return err
 	}
 
@@ -167,10 +167,19 @@ func (s *Store) Load() error {
 	return nil
 }
 
-// CheckIndex checks that an index has been build and it's not
-// out of date. If a version change or the config hash does not
-// match it return an error prompting for an index rebuild.
-func (s *Store) CheckIndex() error {
+// ValidateIndex validates whether the index metadata stored in the database
+// is present and compatible with the current configuration.
+//
+// It returns:
+//   - nil if the index exists and is valid
+//   - ErrNotIndexed if no index metadata is found (initial indexing required)
+//   - ErrReindexRequired if the index is outdated or incompatible (e.g. version
+//     mismatch or configuration hash change)
+//   - any other error for unexpected failures (e.g. database issues)
+//
+// This method is intended for internal use. Callers are expected to interpret
+// the returned error and decide how to handle indexing or reindexing.
+func (s *Store) ValidateIndex() error {
 	var (
 		root       string
 		version    string

@@ -4,9 +4,19 @@ import (
 	"ai-cli/internal/config"
 	"ai-cli/internal/llm"
 	"ai-cli/internal/vector"
+	"context"
+	"errors"
 	"fmt"
 	"io"
 	"path/filepath"
+)
+
+type IndexStatus int
+
+const (
+	IndexOK IndexStatus = iota
+	IndexMissing
+	IndexStale
 )
 
 const defaulDBName = "index"
@@ -60,6 +70,51 @@ func NewClient(userCfg *Config, writer io.Writer) (*Client, error) {
 
 func (c *Client) Close() error {
 	return c.store.Close()
+}
+
+// IndexStatus reports the current state of the index for the client.
+//
+// It maps internal storage validation errors into a stable, user-facing status.
+//
+// The returned status will be one of:
+//   - IndexOK: index exists and is valid
+//   - IndexMissing: no index has been created yet
+//   - IndexStale: index exists but must be rebuilt due to configuration or version changes
+//
+// An error is returned only for unexpected failures (e.g. storage access issues).
+func (c *Client) IndexStatus(ctx context.Context) (IndexStatus, error) {
+	err := c.store.ValidateIndex()
+	switch {
+	case err == nil:
+		return IndexOK, nil
+	case errors.Is(err, vector.ErrNotIndexed):
+		return IndexMissing, nil
+	case errors.Is(err, vector.ErrReindexRequired):
+		return IndexStale, nil
+	default:
+		return IndexOK, err
+	}
+}
+
+// EnsureIndex ensures that a valid index is available.
+//
+// If the index is missing, it triggers an initial indexing.
+// If the index is stale, it performs a full reindex.
+// If the index is already valid, it does nothing.
+//
+// It returns an error only if the indexing or validation process fails.
+func (c *Client) EnsureIndex(ctx context.Context) error {
+	status, err := c.IndexStatus(ctx)
+	if err != nil {
+		return err
+	}
+
+	switch status {
+	case IndexMissing, IndexStale:
+		return c.Index(ctx)
+	default:
+		return nil
+	}
 }
 
 func parseConfig(userCfg *Config) (*config.Config, error) {

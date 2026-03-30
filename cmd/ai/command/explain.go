@@ -15,7 +15,7 @@ func ExplainCommand(client *ai.Client) *cli.Command {
 			file := c.Args().First()
 			result, err := client.Explain(c.Context, file)
 			if err != nil {
-				return err
+				return catchIndexError(err)
 			}
 			if result.Status.NoResults {
 				fmt.Println("No relevant results found")

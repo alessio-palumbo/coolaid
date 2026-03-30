@@ -30,7 +30,7 @@ func QueryCommand(client *ai.Client) *cli.Command {
 			prompt := strings.TrimSpace(strings.Join(c.Args().Slice(), " "))
 			result, err := client.Query(c.Context, prompt, ai.WithRetrievalMode(ai.RetrievalMode(c.String("mode"))))
 			if err != nil {
-				return err
+				return catchIndexError(err)
 			}
 			if result.Status.NoResults {
 				fmt.Println("No relevant results found")
