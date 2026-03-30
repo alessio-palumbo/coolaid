@@ -11,31 +11,69 @@ import (
 	"path/filepath"
 )
 
+// IndexStatus represents the current state of the index.
 type IndexStatus int
 
 const (
+	// IndexOK indicates that the index exists and is valid.
 	IndexOK IndexStatus = iota
+
+	// IndexMissing indicates that no index has been created yet.
+	// An initial indexing is required.
 	IndexMissing
+
+	// IndexStale indicates that the index exists but is outdated or
+	// incompatible with the current configuration or version.
+	// A full reindex is required.
 	IndexStale
 )
 
-const defaulDBName = "index"
+const defaultDBName = "index"
 
+// Config defines the configuration used to initialize a Client.
+//
+// Defaults are applied for certain fields when left empty:
+//   - StoreDir defaults to "<ProjectRoot>/.ai"
+//   - DBName defaults to "index"
+//
+// It controls how the project is indexed and how the LLM is used
+// for querying and code generation.
 type Config struct {
-	// ProjectRoot is the directory to scan and index.
-	// Typically the root of your repository.
+	// ProjectRoot is the root directory of the project to scan and index.
+	// This is typically the root of your repository.
 	ProjectRoot string
-	StoreDir    string
-	DBName      string
 
-	Model          string
+	// StoreDir is the directory where the index database will be stored.
+	// If empty, a default location may be used.
+	StoreDir string
+
+	// DBName is the name of the index database.
+	// Defaults to "index" if not specified.
+	DBName string
+
+	// Model is the LLM used for generation tasks (e.g. answering queries,
+	// generating code, or tests).
+	Model string
+
+	// EmbeddingModel is the model used to generate vector embeddings
+	// for indexed content.
 	EmbeddingModel string
-	Temperature    float64
 
+	// Temperature controls the randomness of the LLM output.
+	// Lower values produce more deterministic results.
+	Temperature float64
+
+	// IncludeExtensions restricts indexing to files with the given extensions
+	// (e.g. [".go", ".py"]). If empty, all supported files may be included.
 	IncludeExtensions []string
-	IgnorePatterns    []string
+
+	// IgnorePatterns defines glob patterns for files or directories to exclude
+	// from indexing (e.g. ["vendor/**", "node_modules/**"]).
+	IgnorePatterns []string
 }
 
+// Client is the main entry point for interacting with the indexing
+// and querying system.
 type Client struct {
 	cfg   *config.Config
 	llm   *llm.Client
@@ -44,6 +82,12 @@ type Client struct {
 	writer io.Writer
 }
 
+// NewClient initializes a new Client using the provided configuration.
+//
+// It sets up the underlying LLM client and vector store. The returned
+// Client is ready to be used for indexing and querying.
+//
+// writer is used for user-facing output such as progress logs or generated results.
 func NewClient(userCfg *Config, writer io.Writer) (*Client, error) {
 	cfg, err := parseConfig(userCfg)
 	if err != nil {
@@ -68,6 +112,9 @@ func NewClient(userCfg *Config, writer io.Writer) (*Client, error) {
 	}, nil
 }
 
+// Close releases any resources held by the Client.
+//
+// It should be called when the Client is no longer needed.
 func (c *Client) Close() error {
 	return c.store.Close()
 }
@@ -117,6 +164,13 @@ func (c *Client) EnsureIndex(ctx context.Context) error {
 	}
 }
 
+// parseConfig validates the user-provided Config and applies defaults.
+//
+// The following defaults are applied when fields are empty:
+//   - StoreDir: "<ProjectRoot>/.ai"
+//   - DBName:   "index"
+//
+// It also derives any internal configuration required by the system.
 func parseConfig(userCfg *Config) (*config.Config, error) {
 	if userCfg == nil {
 		return nil, fmt.Errorf("config is required: provide at least Model, EmbeddingModel, and ProjectRoot")
@@ -136,7 +190,7 @@ func parseConfig(userCfg *Config) (*config.Config, error) {
 	c.StoreDir = userCfg.StoreDir
 	c.DBName = userCfg.DBName
 	if c.DBName == "" {
-		c.DBName = defaulDBName
+		c.DBName = defaultDBName
 	}
 
 	if err := c.Apply(); err != nil {

@@ -17,17 +17,34 @@ import (
 	"strings"
 )
 
+// minAcceptableScore defines the minimum similarity score required
+// for a search result to be considered relevant.
+//
+// Results below this threshold may trigger a retry with additional
+// context (e.g. repository summary).
 const minAcceptableScore = 0.5
 
+// ErrEmptyPrompt is returned when a task requires a non-empty prompt.
 var ErrEmptyPrompt = errors.New("prompt required")
 
+// TaskResult represents the outcome of a task execution.
 type TaskResult struct {
 	Status TaskStatus
 }
+
+// TaskStatus provides additional information about the task outcome.
 type TaskStatus struct {
+	// NoResults indicates that no relevant results were found for the query.
+	// This is not considered an error condition.
 	NoResults bool
 }
 
+// Index builds a fresh index for the configured project.
+//
+// It clears any existing index, scans the project, generates embeddings,
+// and persists the results to the store.
+//
+// Progress and summary information are written to the configured writer.
 func (c *Client) Index(ctx context.Context) error {
 	if err := c.store.Clear(); err != nil {
 		return err
@@ -45,6 +62,9 @@ func (c *Client) Index(ctx context.Context) error {
 	return nil
 }
 
+// Ask sends a raw prompt directly to the LLM and streams the response.
+//
+// This bypasses the index and does not perform any retrieval.
 func (c *Client) Ask(ctx context.Context, prompt string) error {
 	if prompt == "" {
 		return ErrEmptyPrompt
@@ -52,6 +72,10 @@ func (c *Client) Ask(ctx context.Context, prompt string) error {
 	return c.llm.GenerateStream(prompt, c.writer)
 }
 
+// Chat performs a retrieval-augmented generation (RAG) query.
+//
+// It retrieves relevant context from the index and injects it into
+// a chat-oriented prompt template before streaming the response.
 func (c *Client) Chat(ctx context.Context, prompt string, opts ...TaskOption) error {
 	taskCfg := parseTaskOptions(opts...)
 	results, err := c.SemanticSearch(ctx, prompt, taskCfg.retrieval.k, taskCfg.retrieval.useMMR)
@@ -71,6 +95,9 @@ func (c *Client) Chat(ctx context.Context, prompt string, opts ...TaskOption) er
 	return c.llm.ChatStream(renderedPrompt, c.writer)
 }
 
+// Summarize generates a summary of the given file.
+//
+// The file content is passed directly to the LLM without retrieval.
 func (c *Client) Summarize(ctx context.Context, file string) error {
 	data, err := os.ReadFile(file)
 	if err != nil {
@@ -85,6 +112,12 @@ func (c *Client) Summarize(ctx context.Context, file string) error {
 	return c.llm.GenerateStream(prompt, os.Stdout)
 }
 
+// Explain analyzes a file and generates an explanation using
+// relevant context retrieved from the index.
+//
+// It attempts to identify related code (dependencies, symbols)
+// and excludes the target file itself from the retrieved context
+// to avoid redundant information.
 func (c *Client) Explain(ctx context.Context, file string, opts ...TaskOption) (TaskResult, error) {
 	data, err := os.ReadFile(file)
 	if err != nil {
@@ -118,6 +151,10 @@ func (c *Client) Explain(ctx context.Context, file string, opts ...TaskOption) (
 	return TaskResult{}, c.llm.GenerateStream(prompt, os.Stdout)
 }
 
+// Search performs a semantic search against the index and writes
+// the matching results to the configured writer.
+//
+// It does not invoke the LLM.
 func (c *Client) Search(ctx context.Context, prompt string, opts ...TaskOption) (TaskResult, error) {
 	if prompt == "" {
 		return TaskResult{}, ErrEmptyPrompt
@@ -136,10 +173,20 @@ func (c *Client) Search(ctx context.Context, prompt string, opts ...TaskOption) 
 	return TaskResult{}, nil
 }
 
-// Query executes a semantic query against the index.
-// It streams the answer to the configured writer.
+// Query executes a retrieval-augmented query against the index
+// and streams the generated answer.
 //
-// If an error is returned, the QueryStatus should be ignored.
+// It enhances the query using repository summary when needed and
+// may retry the search if initial results are insufficient.
+//
+// Behavior:
+//   - performs semantic search
+//   - optionally enriches the query with repository summary
+//   - retries if results are weak or empty
+//   - injects results into a prompt template
+//   - streams the final answer via the LLM
+//
+// If no relevant results are found, TaskResult.Status.NoResults is set.
 func (c *Client) Query(ctx context.Context, prompt string, opts ...TaskOption) (TaskResult, error) {
 	if prompt == "" {
 		return TaskResult{}, ErrEmptyPrompt
@@ -190,6 +237,14 @@ func (c *Client) Query(ctx context.Context, prompt string, opts ...TaskOption) (
 	return TaskResult{}, c.llm.GenerateStream(renderedPrompt, os.Stdout)
 }
 
+// GenerateTests generates tests for a given target.
+//
+// The target can be:
+//   - a file path (e.g. "file.go")
+//   - a file and function (e.g. "file.go:FuncName")
+//
+// It retrieves relevant context from the index and uses a language-
+// specific template when supported.
 func (c *Client) GenerateTests(ctx context.Context, target string, opts ...TaskOption) (TaskResult, error) {
 	if target == "" {
 		return TaskResult{}, fmt.Errorf("target required")
@@ -229,6 +284,10 @@ func (c *Client) GenerateTests(ctx context.Context, target string, opts ...TaskO
 	return TaskResult{}, c.llm.GenerateStream(prompt, c.writer)
 }
 
+// SemanticSearch performs a vector similarity search against the index.
+//
+// It embeds the prompt and retrieves the top-k most relevant results.
+// If useMMR is true, Max Marginal Relevance is applied to improve diversity.
 func (c *Client) SemanticSearch(ctx context.Context, prompt string, k int, useMMR bool) ([]vector.Result, error) {
 	queryVec, err := c.llm.Embed(prompt)
 	if err != nil {
@@ -237,15 +296,19 @@ func (c *Client) SemanticSearch(ctx context.Context, prompt string, k int, useMM
 	return c.store.Search(queryVec, k, useMMR)
 }
 
+// enrichWithSummary appends repository summary context to the prompt.
 func enrichWithSummary(prompt, summary string) string {
 	return prompt + "\n\n" + summary
 }
 
+// shouldRetry determines whether a search should be retried with
+// additional context (e.g. summary) based on result quality.
 func shouldRetry(results []vector.Result) bool {
 	return len(results) == 0 || results[0].Score < minAcceptableScore
 }
 
-// isSupportedLanguage returns true if the test are supported for the given extension.
+// isSupportedLanguage reports whether test generation is supported
+// for the given file type.
 func isSupportedLanguage(path string) bool {
 	switch filepath.Ext(path) {
 	case ".go":
@@ -267,8 +330,9 @@ func parseTarget(arg string) (file string, fn string) {
 }
 
 // extractTarget returns either the full file content or a specific function body.
+//
 // If fn is empty, the full content is returned.
-// If fn is not found, it falls back to full content.
+// If fn is not found, it falls back to the full content.
 func extractTarget(src []byte, fn string) string {
 	if fn == "" {
 		return string(src)
