@@ -46,9 +46,10 @@ var promptFS embed.FS
 var templates = template.Must(template.ParseFS(promptFS, "templates/*.tmpl"))
 
 type Config struct {
-	Template   promptTemplate
-	Structured bool
-	Summary    string
+	Template       promptTemplate
+	SystemOverride string
+	Structured     bool
+	Summary        string
 }
 
 type templateData struct {

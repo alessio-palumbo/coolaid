@@ -1,15 +1,14 @@
 package command
 
 import (
-	"ai-cli/internal/llm"
-	"ai-cli/internal/vector"
+	"ai-cli/pkg/ai"
 	"fmt"
 	"strings"
 
 	"github.com/urfave/cli/v2"
 )
 
-func SearchCommand(llmClient *llm.Client, store *vector.Store) *cli.Command {
+func SearchCommand(client *ai.Client) *cli.Command {
 	return &cli.Command{
 		Name:  "search",
 		Usage: "semantic search in indexed code",
@@ -27,21 +26,14 @@ func SearchCommand(llmClient *llm.Client, store *vector.Store) *cli.Command {
 		},
 		Action: func(c *cli.Context) error {
 			prompt := strings.Join(c.Args().Slice(), " ")
-			if prompt == "" {
-				return fmt.Errorf("query required")
-			}
 
-			queryVec, err := llmClient.Embed(prompt)
+			result, err := client.Search(c.Context, prompt, ai.WithTopK(c.Int("k")), ai.WithMMR(c.Bool("mmr")))
 			if err != nil {
 				return err
 			}
-
-			results, err := store.Search(queryVec, c.Int("k"), c.Bool("mmr"))
-			if err != nil {
-				return err
+			if result.Status.NoResults {
+				fmt.Println("No relevant results found")
 			}
-
-			fmt.Println(vector.JoinResults(results...))
 			return nil
 		},
 	}

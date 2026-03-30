@@ -2,6 +2,7 @@ package benchmark
 
 import (
 	"ai-cli/internal/vector"
+	"context"
 	"fmt"
 	"log"
 	"strings"
@@ -33,21 +34,33 @@ type TestCase struct {
 	ExpectedFiles []string
 }
 
-func Run(store *vector.Store, embed func(string) ([]float64, error)) {
+type searchOpts struct {
+	k      int
+	useMMR bool
+}
+
+var testSearchOpts = []searchOpts{
+	{k: 5, useMMR: false},
+	{k: 8, useMMR: false},
+	{k: 12, useMMR: true},
+}
+
+type Searcher interface {
+	SemanticSearch(ctx context.Context, prompt string, k int, useMMR bool) ([]vector.Result, error)
+}
+
+func Run(searcher Searcher) {
 	for _, tc := range tests {
 		fmt.Println("Test:", tc.Name)
+		ctx := context.Background()
 
-		for _, mode := range []string{vector.SearchModeFast, vector.SearchModeBalanced, vector.SearchModeDeep} {
-			queryVec, err := embed(tc.Query)
-			if err != nil {
-				log.Fatal(err)
-			}
-			results, err := store.SearchForMode(mode, queryVec)
+		for _, opts := range testSearchOpts {
+			results, err := searcher.SemanticSearch(ctx, tc.Query, opts.k, opts.useMMR)
 			if err != nil {
 				log.Fatal(err)
 			}
 			s := score(results, tc.ExpectedFiles)
-			fmt.Printf(" %s: %.2f\n", mode, s)
+			fmt.Printf(" (k:%d-mmr:%v): %.2f\n", opts.k, opts.useMMR, s)
 			for _, r := range results {
 				fmt.Println(" -", r.FilePath)
 			}

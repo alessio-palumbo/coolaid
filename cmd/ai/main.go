@@ -2,9 +2,8 @@ package main
 
 import (
 	"ai-cli/cmd/ai/command"
-	"ai-cli/internal/config"
-	"ai-cli/internal/llm"
-	"ai-cli/internal/vector"
+	"ai-cli/cmd/ai/config"
+	"ai-cli/pkg/ai"
 	"log"
 	"os"
 
@@ -17,30 +16,25 @@ func main() {
 		log.Fatal(err)
 	}
 
-	llmClient, err := llm.NewClient(cfg)
+	client, err := ai.NewClient(cfg, os.Stdout)
 	if err != nil {
 		log.Fatal(err)
 	}
-
-	store, err := vector.NewStore(cfg)
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer store.Close()
+	defer client.Close()
 
 	app := &cli.App{
 		Name:  "ai",
 		Usage: "AI powered developer assistant",
 		Commands: []*cli.Command{
-			command.AskCommand(llmClient),
-			command.SummarizeCommand(llmClient),
-			command.ExplainCommand(llmClient, store),
-			command.IndexCommand(llmClient, store, cfg),
-			command.SearchCommand(llmClient, store),
-			command.QueryCommand(llmClient, store),
-			command.ChatCommand(llmClient, store),
-			command.TestCommand(llmClient, store),
-			command.BenchmarkCommand(llmClient, store),
+			command.AskCommand(client),
+			command.SummarizeCommand(client),
+			command.ExplainCommand(client),
+			command.IndexCommand(client),
+			command.SearchCommand(client),
+			command.QueryCommand(client),
+			command.ChatCommand(client),
+			command.TestCommand(client),
+			command.BenchmarkCommand(client),
 		},
 	}
 

@@ -1,9 +1,7 @@
 package command
 
 import (
-	"ai-cli/internal/llm"
-	"ai-cli/internal/prompts"
-	"ai-cli/internal/vector"
+	"ai-cli/pkg/ai"
 	"bufio"
 	"fmt"
 	"os"
@@ -12,7 +10,7 @@ import (
 	"github.com/urfave/cli/v2"
 )
 
-func ChatCommand(llmClient *llm.Client, store *vector.Store) *cli.Command {
+func ChatCommand(client *ai.Client) *cli.Command {
 	return &cli.Command{
 		Name:  "chat",
 		Usage: "start a chat with the AI",
@@ -33,16 +31,7 @@ func ChatCommand(llmClient *llm.Client, store *vector.Store) *cli.Command {
 					break
 				}
 
-				results, err := embedPromptAndSearch(llmClient, store, input, vector.SearchModeFast)
-				if err != nil {
-					return err
-				}
-				prompt, err := prompts.Render(&prompts.Config{Template: prompts.TemplateChat}, input, results...)
-				if err != nil {
-					return err
-				}
-
-				if err := llmClient.ChatStream(prompt, os.Stdout); err != nil {
+				if err := client.Chat(c.Context, input, ai.WithRetrievalMode(ai.RetrievalFast)); err != nil {
 					return err
 				}
 				fmt.Println()

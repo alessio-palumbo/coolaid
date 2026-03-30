@@ -16,12 +16,6 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 )
 
-const (
-	SearchModeFast     string = "fast"
-	SearchModeBalanced string = "balanced"
-	SearchModeDeep     string = "deep"
-)
-
 // defaultMMRLambda controls the tradeoff between relevance (1) and diversity (0).
 const defaultMMRLambda = 0.85
 
@@ -119,18 +113,6 @@ func (s *Store) Add(path, text string, startLine, endLine int, emb []float64) {
 // AddSummary adds a summary to the in-memory Store.
 func (s *Store) AddSummary(summary string) {
 	s.Summary = summary
-}
-
-// SearchForMode performs a Search according to named configurations.
-func (s *Store) SearchForMode(mode string, queryVec []float64) ([]Result, error) {
-	switch mode {
-	case SearchModeDeep:
-		return s.Search(queryVec, 12, true)
-	case SearchModeBalanced:
-		return s.Search(queryVec, 8, false)
-	default:
-		return s.Search(queryVec, 5, false)
-	}
 }
 
 // Search finds the top-k most similar chunks to the given query vector.
