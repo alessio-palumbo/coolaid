@@ -7,7 +7,16 @@ import (
 	"os"
 )
 
-func Build(dir string, store *vector.Store, client *llm.Client, cfg *config.Config) error {
+type Progress struct {
+	Done  int64
+	Total int64
+	File  string
+	Size  int64
+}
+
+type ProgressFunc func(Progress)
+
+func Build(cfg *config.Config, client *llm.Client, store *vector.Store, onProgress ProgressFunc) error {
 	ignore, err := LoadIgnore(store.ProjectRoot, cfg.Index.IgnorePatterns)
 	if err != nil {
 		return err
@@ -19,10 +28,10 @@ func Build(dir string, store *vector.Store, client *llm.Client, cfg *config.Conf
 	}
 
 	summaryBuilder := NewSummaryBuilder()
-	pipeline := NewEmbedPipeline(client, store, len(files))
+	pipeline := NewEmbedPipeline(client, store, len(files), onProgress)
 
 	for _, file := range files {
-		content, err := LoadFile(file)
+		content, err := loadFile(file)
 		if err != nil {
 			continue
 		}
@@ -36,7 +45,7 @@ func Build(dir string, store *vector.Store, client *llm.Client, cfg *config.Conf
 	return nil
 }
 
-func LoadFile(path string) ([]byte, error) {
+func loadFile(path string) ([]byte, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err

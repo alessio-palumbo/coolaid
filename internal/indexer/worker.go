@@ -3,7 +3,6 @@ package indexer
 import (
 	"ai-cli/internal/llm"
 	"ai-cli/internal/vector"
-	"fmt"
 	"log/slog"
 	"os"
 	"sync"
@@ -27,6 +26,8 @@ type EmbedPipeline struct {
 
 	total int64
 	done  atomic.Int64
+
+	onProgress ProgressFunc
 }
 
 type embedJob struct {
@@ -43,13 +44,14 @@ type embedResult struct {
 	err       error
 }
 
-func NewEmbedPipeline(client *llm.Client, store *vector.Store, totalFiles int) *EmbedPipeline {
+func NewEmbedPipeline(client *llm.Client, store *vector.Store, totalFiles int, onProgress ProgressFunc) *EmbedPipeline {
 	p := &EmbedPipeline{
-		jobs:    make(chan embedJob, 100),
-		results: make(chan embedResult, 100),
-		client:  client,
-		store:   store,
-		total:   int64(totalFiles),
+		jobs:       make(chan embedJob, 100),
+		results:    make(chan embedResult, 100),
+		client:     client,
+		store:      store,
+		total:      int64(totalFiles),
+		onProgress: onProgress,
 	}
 
 	for range pipelineWorkes {
@@ -91,7 +93,7 @@ func (p *EmbedPipeline) collector() {
 	filesDone := make(map[string]struct{})
 	for res := range p.results {
 		if res.err != nil {
-			slog.Info(
+			slog.Warn(
 				"embed error",
 				slog.String("error", res.err.Error()),
 				slog.String("file", res.file),
@@ -108,9 +110,19 @@ func (p *EmbedPipeline) collector() {
 			filesDone[res.file] = struct{}{}
 			p.done.Add(1)
 
-			info, _ := os.Stat(res.file)
-			fmt.Printf("\r%-*s", 150, fmt.Sprintf("Indexing files: %d/%d (file: %s [%d bytes])", p.done.Load(), p.total, res.file, info.Size()))
+			var size int64
+			if info, err := os.Stat(res.file); err == nil {
+				size = info.Size()
+			}
+
+			if p.onProgress != nil {
+				p.onProgress(Progress{
+					Done:  p.done.Load(),
+					Total: p.total,
+					File:  res.file,
+					Size:  size,
+				})
+			}
 		}
 	}
-	fmt.Println()
 }

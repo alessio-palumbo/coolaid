@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"path/filepath"
 )
 
@@ -70,6 +71,8 @@ type Config struct {
 	// IgnorePatterns defines glob patterns for files or directories to exclude
 	// from indexing (e.g. ["vendor/**", "node_modules/**"]).
 	IgnorePatterns []string
+
+	Logger *slog.Logger
 }
 
 // Client is the main entry point for interacting with the indexing
@@ -80,6 +83,7 @@ type Client struct {
 	store *vector.Store
 
 	writer io.Writer
+	logger *slog.Logger
 }
 
 // NewClient initializes a new Client using the provided configuration.
@@ -104,11 +108,16 @@ func NewClient(userCfg *Config, writer io.Writer) (*Client, error) {
 		return nil, err
 	}
 
+	if userCfg.Logger == nil {
+		userCfg.Logger = slog.New(slog.NewTextHandler(io.Discard, nil))
+	}
+
 	return &Client{
 		cfg:    cfg,
 		llm:    llmClient,
 		store:  store,
 		writer: writer,
+		logger: userCfg.Logger,
 	}, nil
 }
 
@@ -117,6 +126,21 @@ func NewClient(userCfg *Config, writer io.Writer) (*Client, error) {
 // It should be called when the Client is no longer needed.
 func (c *Client) Close() error {
 	return c.store.Close()
+}
+
+// ProjectRoot returns the root directory of the project being indexed.
+//
+// This is the resolved path used by the Client during indexing.
+func (c *Client) ProjectRoot() string {
+	return c.cfg.ProjectRoot
+}
+
+// StoreLocation returns the full path to the underlying vector store database.
+//
+// This path is determined during client initialization and points to the
+// persisted index file used for semantic search operations.
+func (c *Client) StoreLocation() string {
+	return c.store.DBPath
 }
 
 // IndexStatus reports the current state of the index for the client.
@@ -150,7 +174,7 @@ func (c *Client) IndexStatus(ctx context.Context) (IndexStatus, error) {
 // If the index is already valid, it does nothing.
 //
 // It returns an error only if the indexing or validation process fails.
-func (c *Client) EnsureIndex(ctx context.Context) error {
+func (c *Client) EnsureIndex(ctx context.Context, onProgress func(IndexProgress), onComplete func(IndexResult)) error {
 	status, err := c.IndexStatus(ctx)
 	if err != nil {
 		return err
@@ -158,7 +182,7 @@ func (c *Client) EnsureIndex(ctx context.Context) error {
 
 	switch status {
 	case IndexMissing, IndexStale:
-		return c.Index(ctx)
+		return c.Index(ctx, onProgress, onComplete)
 	default:
 		return nil
 	}
