@@ -16,6 +16,7 @@ type EmbedPipeline struct {
 
 	client *llm.Client
 	store  *vector.Store
+	logger *slog.Logger
 
 	wg sync.WaitGroup
 
@@ -39,12 +40,13 @@ type embedResult struct {
 	err       error
 }
 
-func NewEmbedPipeline(client *llm.Client, store *vector.Store, maxWorkers, totalFiles int, onProgress ProgressFunc) *EmbedPipeline {
+func NewEmbedPipeline(client *llm.Client, store *vector.Store, logger *slog.Logger, maxWorkers, totalFiles int, onProgress ProgressFunc) *EmbedPipeline {
 	p := &EmbedPipeline{
 		jobs:       make(chan embedJob, 100),
 		results:    make(chan embedResult, 100),
 		client:     client,
 		store:      store,
+		logger:     logger,
 		total:      int64(totalFiles),
 		onProgress: onProgress,
 	}
@@ -88,7 +90,7 @@ func (p *EmbedPipeline) collector() {
 	filesDone := make(map[string]struct{})
 	for res := range p.results {
 		if res.err != nil {
-			slog.Warn(
+			p.logger.Warn(
 				"embed error",
 				slog.String("error", res.err.Error()),
 				slog.String("file", res.file),

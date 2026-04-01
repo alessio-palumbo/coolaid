@@ -3,6 +3,7 @@ package indexer
 import (
 	"ai-cli/internal/llm"
 	"ai-cli/internal/vector"
+	"log/slog"
 	"os"
 )
 
@@ -59,7 +60,7 @@ type ProgressFunc func(Progress)
 //
 // Build is intended to be used internally by higher-level APIs and does not
 // perform any output or rendering itself.
-func Build(client *llm.Client, store *vector.Store, opts IndexOptions, onProgress ProgressFunc) error {
+func Build(client *llm.Client, store *vector.Store, logger *slog.Logger, opts IndexOptions, onProgress ProgressFunc) error {
 	ignore, err := LoadIgnore(store.ProjectRoot, opts.IgnorePatterns)
 	if err != nil {
 		return err
@@ -71,7 +72,7 @@ func Build(client *llm.Client, store *vector.Store, opts IndexOptions, onProgres
 	}
 
 	summaryBuilder := NewSummaryBuilder()
-	pipeline := NewEmbedPipeline(client, store, len(files), opts.MaxWorkers, onProgress)
+	pipeline := NewEmbedPipeline(client, store, logger, len(files), opts.MaxWorkers, onProgress)
 
 	for _, file := range files {
 		content, err := loadFile(file)

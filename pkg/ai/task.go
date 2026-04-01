@@ -88,7 +88,7 @@ func (c *Client) Index(ctx context.Context, onProgress func(IndexProgress), onCo
 		Extensions:     c.cfg.extensions,
 		MaxWorkers:     c.cfg.IndexMaxWorkers,
 	}
-	if err := indexer.Build(c.llm, c.store, opts, func(p indexer.Progress) {
+	if err := indexer.Build(c.llm, c.store, c.cfg.Logger, opts, func(p indexer.Progress) {
 		if onProgress != nil {
 			onProgress(IndexProgress{
 				Done:  p.Done,
