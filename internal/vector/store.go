@@ -1,11 +1,8 @@
 package vector
 
 import (
-	"ai-cli/internal/config"
 	"container/heap"
-	"crypto/sha1"
 	"database/sql"
-	"encoding/hex"
 	"fmt"
 	"math"
 	"os"
@@ -70,8 +67,8 @@ func JoinResults(results ...Result) string {
 // NewStore creates and initializes a vector Store backed by SQLite.
 // It opens the database, ensures the required tables exist, and loads
 // the stored embeddings into memory so they can be searched efficiently.
-func NewStore(cfg *config.Config) (*Store, error) {
-	dbPath := filepath.Join(cfg.StoreDir, cfg.DBName+".sqlite")
+func NewStore(projectRoot, storeDir, dbName, configHash string) (*Store, error) {
+	dbPath := filepath.Join(storeDir, dbName+".sqlite")
 	db, err := openDB(dbPath)
 	if err != nil {
 		return nil, err
@@ -80,8 +77,8 @@ func NewStore(cfg *config.Config) (*Store, error) {
 	s := &Store{
 		db:          db,
 		now:         func() time.Time { return time.Now().UTC() },
-		configHash:  computeConfigHash(cfg),
-		ProjectRoot: cfg.ProjectRoot,
+		configHash:  configHash,
+		ProjectRoot: projectRoot,
 		DBPath:      dbPath,
 	}
 	if err := s.init(); err != nil {
@@ -231,17 +228,4 @@ func openDB(path string) (*sql.DB, error) {
 		return nil, err
 	}
 	return sql.Open("sqlite3", path)
-}
-
-func computeConfigHash(cfg *config.Config) string {
-	h := sha1.New()
-
-	for _, ext := range cfg.Index.IncludeExtensions {
-		h.Write([]byte(ext))
-	}
-	for _, p := range cfg.Index.IgnorePatterns {
-		h.Write([]byte(p))
-	}
-
-	return hex.EncodeToString(h.Sum(nil))
 }

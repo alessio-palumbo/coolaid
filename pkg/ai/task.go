@@ -80,7 +80,7 @@ func (c *Client) Index(ctx context.Context, onProgress func(IndexProgress), onCo
 		return err
 	}
 
-	c.logger.Info("Indexing project", slog.String("root", c.store.ProjectRoot))
+	c.cfg.Logger.Info("Indexing project", slog.String("root", c.store.ProjectRoot))
 	start := time.Now()
 
 	onProgressFunc := func(p indexer.Progress) {
@@ -93,7 +93,7 @@ func (c *Client) Index(ctx context.Context, onProgress func(IndexProgress), onCo
 			})
 		}
 	}
-	if err := indexer.Build(c.cfg, c.llm, c.store, onProgressFunc); err != nil {
+	if err := indexer.Build(c.llm, c.store, c.cfg.IgnorePatterns, c.cfg.extensions, onProgressFunc); err != nil {
 		return err
 	}
 
@@ -110,7 +110,7 @@ func (c *Client) Index(ctx context.Context, onProgress func(IndexProgress), onCo
 		})
 	}
 
-	c.logger.Info("Indexing completed",
+	c.cfg.Logger.Info("Indexing completed",
 		slog.Int("chunks", len(c.store.Items)),
 		slog.String("store_location", c.store.DBPath),
 		slog.Duration("elapsed_time", elapsed),

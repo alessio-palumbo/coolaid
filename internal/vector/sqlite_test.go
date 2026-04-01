@@ -1,7 +1,6 @@
 package vector
 
 import (
-	"ai-cli/internal/config"
 	"database/sql"
 	"testing"
 	"time"
@@ -154,7 +153,7 @@ func TestSaveLoad(t *testing.T) {
 	store.AddSummary("summary")
 	assert.NoError(t, store.Save())
 
-	store2, err := NewStore(&config.Config{StoreDir: tmpDir})
+	store2, err := NewStore("", tmpDir, "", "")
 	assert.NoError(t, err)
 	defer store2.Close()
 
@@ -226,18 +225,13 @@ func Test_ensureMetadata(t *testing.T) {
 	})
 }
 
-func newTestStore(t *testing.T, cfg ...*config.Config) (*Store, string) {
+func newTestStore(t *testing.T) (*Store, string) {
 	t.Helper()
 
-	var c config.Config
-	if len(cfg) > 0 {
-		c = *cfg[0]
-	}
-
-	c.StoreDir = t.TempDir()
-	store, err := NewStore(&c)
+	tmpDir := t.TempDir()
+	store, err := NewStore("", tmpDir, "", "")
 	assert.NoError(t, err)
 
 	t.Cleanup(func() { store.Close() })
-	return store, c.StoreDir
+	return store, tmpDir
 }

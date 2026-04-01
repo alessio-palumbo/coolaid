@@ -1,7 +1,6 @@
 package vector
 
 import (
-	"ai-cli/internal/config"
 	"fmt"
 	"math/rand/v2"
 	"path/filepath"
@@ -49,27 +48,36 @@ func C()
 
 func TestNewStore(t *testing.T) {
 	// Test initialisation with hash.
-	store, tmpDir := newTestStore(t)
+	pRoot := "/home/me/project/root"
+	tmpDir := t.TempDir()
+	store, err := NewStore(pRoot, tmpDir, "my_db", "hash")
+	assert.NoError(t, err)
+	defer store.Close()
+
 	assert.NotNil(t, store)
 	assert.NotNil(t, store.db)
+	assert.Equal(t, store.DBPath, filepath.Join(tmpDir, "my_db.sqlite"))
+	assert.Equal(t, store.ProjectRoot, pRoot)
 
 	// Test initialisation with data.
 	store.Add("file.go", "func A()", 1, 1, []float64{1, 0})
 	assert.NoError(t, store.Save())
 
-	// Reload store
-	store2, err := NewStore(&config.Config{StoreDir: tmpDir})
+	// Reload store, same hash.
+	store2, err := NewStore(pRoot, tmpDir, "my_db", "hash")
 	assert.NoError(t, err)
 	defer store2.Close()
 
 	assert.NoError(t, store2.EnsureLoaded())
 	assert.Equal(t, len(store2.Items), 1)
 
-	// With DB name set
-	store, _ = newTestStore(t, &config.Config{DBName: "test_db"})
-	assert.NotNil(t, store)
-	assert.NotNil(t, store.db)
-	assert.Equal(t, filepath.Base(store.DBPath), "test_db.sqlite")
+	// Reload store, hash changed.
+	store2, err = NewStore(pRoot, tmpDir, "my_db", "new_hash")
+	assert.NoError(t, err)
+	defer store2.Close()
+
+	assert.Error(t, ErrReindexRequired, err)
+	assert.Equal(t, len(store2.Items), 0)
 }
 
 func TestSearch(t *testing.T) {

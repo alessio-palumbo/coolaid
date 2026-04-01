@@ -1,7 +1,6 @@
 package llm
 
 import (
-	"ai-cli/internal/config"
 	"bytes"
 	"encoding/json"
 	"fmt"
@@ -76,12 +75,12 @@ type tagsResponse struct {
 	} `json:"models"`
 }
 
-func NewClient(cfg *config.Config) (*Client, error) {
+func NewClient(model, embeddingModel string) (*Client, error) {
 	client := &Client{
 		client:          &http.Client{Timeout: defaultHTTPTimeout},
 		BaseURL:         ollamaURL,
-		LLMModel:        cfg.LLM.Model,
-		EmbeddingsModel: cfg.LLM.EmbeddingModel,
+		LLMModel:        model,
+		EmbeddingsModel: embeddingModel,
 	}
 
 	if err := client.ping(); err != nil {

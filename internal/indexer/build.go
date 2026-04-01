@@ -1,7 +1,6 @@
 package indexer
 
 import (
-	"ai-cli/internal/config"
 	"ai-cli/internal/llm"
 	"ai-cli/internal/vector"
 	"os"
@@ -16,13 +15,13 @@ type Progress struct {
 
 type ProgressFunc func(Progress)
 
-func Build(cfg *config.Config, client *llm.Client, store *vector.Store, onProgress ProgressFunc) error {
-	ignore, err := LoadIgnore(store.ProjectRoot, cfg.Index.IgnorePatterns)
+func Build(client *llm.Client, store *vector.Store, ignorePatterns []string, extensions map[string]struct{}, onProgress ProgressFunc) error {
+	ignore, err := LoadIgnore(store.ProjectRoot, ignorePatterns)
 	if err != nil {
 		return err
 	}
 
-	files, err := Scan(store.ProjectRoot, ignore, cfg.Extensions)
+	files, err := Scan(store.ProjectRoot, ignore, extensions)
 	if err != nil {
 		return err
 	}
