@@ -146,7 +146,7 @@ func (c *Client) Summarize(ctx context.Context, file string) error {
 		return err
 	}
 
-	return c.llm.GenerateStream(prompt, os.Stdout)
+	return c.llm.GenerateStream(prompt, c.writer)
 }
 
 // Explain analyzes a file and generates an explanation using
@@ -185,7 +185,7 @@ func (c *Client) Explain(ctx context.Context, file string, opts ...TaskOption) (
 		return TaskResult{}, err
 	}
 
-	return TaskResult{}, c.llm.GenerateStream(prompt, os.Stdout)
+	return TaskResult{}, c.llm.GenerateStream(prompt, c.writer)
 }
 
 // Search performs a semantic search against the index and writes
@@ -271,7 +271,7 @@ func (c *Client) Query(ctx context.Context, prompt string, opts ...TaskOption) (
 		return TaskResult{}, err
 	}
 
-	return TaskResult{}, c.llm.GenerateStream(renderedPrompt, os.Stdout)
+	return TaskResult{}, c.llm.GenerateStream(renderedPrompt, c.writer)
 }
 
 // GenerateTests generates tests for a given target.
