@@ -19,11 +19,11 @@ const (
 	TemplateTestGeneric promptTemplate = "test-generic.tmpl"
 )
 
-type promptMode int
+type targetType string
 
 const (
-	PromptSimple promptMode = iota
-	PromptStructured
+	TargetFile     = "file"
+	TargetFunction = "function"
 )
 
 const structuredInstructions = `
@@ -43,20 +43,65 @@ Use clear formatting:
 //go:embed templates/*.tmpl
 var promptFS embed.FS
 
-var templates = template.Must(template.ParseFS(promptFS, "templates/*.tmpl"))
+// Precompiled templates
+var templates = make(map[string]*template.Template)
+
+func init() {
+	base := template.Must(template.ParseFS(promptFS, "templates/base.tmpl"))
+
+	// List all templates here (your "modes")
+	files := []string{
+		string(TemplateExplain),
+		string(TemplateSummarize),
+		string(TemplateQuery),
+		string(TemplateChat),
+		string(TemplateTestGo),
+		string(TemplateTestGeneric),
+	}
+
+	for _, file := range files {
+		tmpl := template.Must(base.Clone())
+		templates[file] = template.Must(tmpl.ParseFS(promptFS, "templates/"+file))
+	}
+}
 
 type Config struct {
 	Template       promptTemplate
 	SystemOverride string
 	Structured     bool
 	Summary        string
+	Target         Target
+}
+
+func (c *Config) WithTarget(file, fn string) *Config {
+	if fn != "" {
+		c.Target = Target{
+			Name: fn,
+			Type: TargetFunction,
+		}
+		return c
+	}
+
+	c.Target = Target{
+		Name: file,
+		Type: TargetFile,
+	}
+	return c
+}
+
+type Target struct {
+	Type targetType
+	Name string
 }
 
 type templateData struct {
-	Formatting string
-	Prompt     string
-	Context    string
-	Summary    string
+	System                 string
+	StructuredInstructions string
+	Formatting             string
+	Prompt                 string
+	Context                string
+	Summary                string
+	Target                 Target
 }
 
 func Render(cfg *Config, prompt string, context ...vector.Result) (string, error) {
@@ -64,19 +109,27 @@ func Render(cfg *Config, prompt string, context ...vector.Result) (string, error
 		return "", fmt.Errorf("template config must be set")
 	}
 
-	if cfg.Structured {
-		prompt += structuredInstructions
+	tmpl, ok := templates[string(cfg.Template)]
+	if !ok {
+		return "", fmt.Errorf("template %s not found", cfg.Template)
 	}
+
 	td := templateData{
+		System:     cfg.SystemOverride,
 		Formatting: formattingDirectives,
 		Prompt:     prompt,
 		Context:    vector.JoinResults(context...),
 		Summary:    cfg.Summary,
+		Target:     cfg.Target,
+	}
+
+	if cfg.Structured {
+		td.StructuredInstructions = structuredInstructions
 	}
 
 	var buf bytes.Buffer
-	if err := templates.Lookup(string(cfg.Template)).
-		Execute(&buf, td); err != nil {
+
+	if err := tmpl.ExecuteTemplate(&buf, "base", td); err != nil {
 		return "", err
 	}
 	return buf.String(), nil

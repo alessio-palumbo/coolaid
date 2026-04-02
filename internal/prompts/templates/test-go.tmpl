@@ -1,4 +1,4 @@
-You are a senior Go developer.
+{{- define "content" }}
 
 Generate high-quality unit tests for the provided code.
 
@@ -26,8 +26,4 @@ Structure:
 - Use a slice of test cases (table-driven style)
 - Each test case must include name, inputs, expected outputs
 
-Target Code:
-{{.Prompt}}
-
-Related Context:
-{{.Context}}
+{{- end }}

@@ -13,10 +13,10 @@ func ExplainCommand(client *ai.Client, sw *spinner.StreamWriter) *cli.Command {
 		Name:  "explain",
 		Usage: "explain a source file",
 		Action: func(c *cli.Context) error {
-			file := c.Args().First()
+			target := parseTarget(c.Args().First())
 
 			result, err := spinner.Wrap(sw, func() (ai.TaskResult, error) {
-				return client.Explain(c.Context, file)
+				return client.Explain(c.Context, target)
 			})
 			if err != nil {
 				return catchIndexError(err)

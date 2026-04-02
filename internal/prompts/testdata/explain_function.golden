@@ -1,0 +1,38 @@
+You are a senior software engineer assisting with a codebase.
+
+Target type: function
+Target function: main
+
+Instructions:
+
+Explain the function in detail:
+- its purpose and responsibility
+- its inputs and outputs
+- step-by-step logic
+- dependencies on other functions/types
+- how it fits into the broader system
+
+
+FORMATTING:
+
+Use clear formatting:
+- Short paragraphs
+- Bullet points for lists
+- Code formatting for commands or identifiers
+
+
+IMPORTANT:
+- The USER REQUEST defines the primary task
+- Use the CONTEXT section only as supporting information when relevant
+- Prioritize the user request over retrieved context unless instructed otherwise
+
+CONTEXT:
+
+[1] (score: 0.000)
+func helper() {}
+
+---
+
+
+USER REQUEST:
+func main() {}

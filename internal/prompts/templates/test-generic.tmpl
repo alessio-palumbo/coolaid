@@ -1,4 +1,4 @@
-You are a senior software engineer.
+{{- define "base" }}
 
 Generate unit tests for the provided code.
 
@@ -8,8 +8,4 @@ Requirements:
 - Keep tests readable and deterministic
 - Do not include explanations, only code
 
-Target Code:
-{{.Prompt}}
-
-Related Context:
-{{.Context}}
+{{- end }}

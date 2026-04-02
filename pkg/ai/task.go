@@ -26,8 +26,13 @@ import (
 // context (e.g. repository summary).
 const minAcceptableScore = 0.5
 
-// ErrEmptyPrompt is returned when a task requires a non-empty prompt.
-var ErrEmptyPrompt = errors.New("prompt required")
+var (
+	// ErrEmptyPrompt is returned when a task requires a non-empty prompt.
+	ErrEmptyPrompt = errors.New("prompt required")
+
+	// ErrTargetFileRequired is returned when a task requires a target file:[fn].
+	ErrTargetFileRequired = errors.New("target file required")
+)
 
 // TaskResult represents the outcome of a task execution.
 type TaskResult struct {
@@ -39,6 +44,18 @@ type TaskStatus struct {
 	// NoResults indicates that no relevant results were found for the query.
 	// This is not considered an error condition.
 	NoResults bool
+}
+
+type Target struct {
+	File     string
+	Function string
+}
+
+func (t Target) validate() error {
+	if t.File == "" {
+		return ErrTargetFileRequired
+	}
+	return nil
 }
 
 // IndexProgress represents the current progress of an indexing operation.
@@ -149,20 +166,24 @@ func (c *Client) Summarize(ctx context.Context, file string) error {
 	return c.llm.GenerateStream(prompt, c.writer)
 }
 
-// Explain analyzes a file and generates an explanation using
+// Explain analyzes a target and generates an explanation using
 // relevant context retrieved from the index.
-//
+
 // It attempts to identify related code (dependencies, symbols)
 // and excludes the target file itself from the retrieved context
 // to avoid redundant information.
-func (c *Client) Explain(ctx context.Context, file string, opts ...TaskOption) (TaskResult, error) {
-	data, err := os.ReadFile(file)
+func (c *Client) Explain(ctx context.Context, target Target, opts ...TaskOption) (TaskResult, error) {
+	if err := target.validate(); err != nil {
+		return TaskResult{}, nil
+	}
+
+	data, err := os.ReadFile(target.File)
 	if err != nil {
 		return TaskResult{}, err
 	}
 
 	// Find dependencies chunks to pass as dependencies to LLM.
-	signals := query.ExtractSignals(file, data)
+	signals := query.ExtractSignals(target.File, data)
 	taskCfg := parseTaskOptions(opts...)
 	results, err := c.SemanticSearch(ctx, signals, taskCfg.retrieval.k, taskCfg.retrieval.useMMR)
 	if err != nil {
@@ -174,13 +195,15 @@ func (c *Client) Explain(ctx context.Context, file string, opts ...TaskOption) (
 
 	// Exclude any chunks matching the file to avoid wasting tokens.
 	for i, r := range results {
-		if strings.Contains(r.FilePath, file) {
+		if strings.Contains(r.FilePath, target.File) {
 			results = slices.Delete(results, i, i+1)
 		}
 	}
 
-	content := "file: " + file + "\n\n" + string(data)
-	prompt, err := prompts.Render(&prompts.Config{Template: prompts.TemplateExplain}, content, results...)
+	prompt, err := prompts.Render(
+		(&prompts.Config{Template: prompts.TemplateExplain}).WithTarget(target.File, target.Function),
+		extractTarget(data, target.Function), results...,
+	)
 	if err != nil {
 		return TaskResult{}, err
 	}
@@ -276,24 +299,19 @@ func (c *Client) Query(ctx context.Context, prompt string, opts ...TaskOption) (
 
 // GenerateTests generates tests for a given target.
 //
-// The target can be:
-//   - a file path (e.g. "file.go")
-//   - a file and function (e.g. "file.go:FuncName")
-//
 // It retrieves relevant context from the index and uses a language-
 // specific template when supported.
-func (c *Client) GenerateTests(ctx context.Context, target string, opts ...TaskOption) (TaskResult, error) {
-	if target == "" {
-		return TaskResult{}, fmt.Errorf("target required")
+func (c *Client) GenerateTests(ctx context.Context, target Target, opts ...TaskOption) (TaskResult, error) {
+	if err := target.validate(); err != nil {
+		return TaskResult{}, nil
 	}
 
-	file, fn := parseTarget(target)
-	data, err := os.ReadFile(file)
+	data, err := os.ReadFile(target.File)
 	if err != nil {
 		return TaskResult{}, err
 	}
 
-	signals := query.ExtractSignals(file, data)
+	signals := query.ExtractSignals(target.File, data)
 	taskCfg := parseTaskOptions(opts...)
 	results, err := c.SemanticSearch(ctx, signals, taskCfg.retrieval.k, taskCfg.retrieval.useMMR)
 	if err != nil {
@@ -307,13 +325,15 @@ func (c *Client) GenerateTests(ctx context.Context, target string, opts ...TaskO
 		SystemOverride: taskCfg.prompt.systemOverride,
 		Structured:     taskCfg.prompt.structuredOutput,
 	}
-	if isSupportedLanguage(file) {
+	if isSupportedLanguage(target.File) {
 		pConfig.Template = prompts.TemplateTestGo
 	} else {
 		pConfig.Template = prompts.TemplateTestGeneric
 	}
 
-	prompt, err := prompts.Render(pConfig, extractTarget(data, fn), results...)
+	prompt, err := prompts.Render(
+		pConfig.WithTarget(target.File, target.Function),
+		extractTarget(data, target.Function), results...)
 	if err != nil {
 		return TaskResult{}, err
 	}
@@ -352,18 +372,6 @@ func isSupportedLanguage(path string) bool {
 		return true
 	}
 	return false
-}
-
-// parseTarget splits input like "file.go:FuncName" into file path and function name.
-// If no function is specified, fn will be empty.
-func parseTarget(arg string) (file string, fn string) {
-	parts := strings.SplitN(arg, ":", 2)
-	file = parts[0]
-
-	if len(parts) == 2 {
-		fn = strings.TrimSpace(parts[1])
-	}
-	return file, fn
 }
 
 // extractTarget returns either the full file content or a specific function body.

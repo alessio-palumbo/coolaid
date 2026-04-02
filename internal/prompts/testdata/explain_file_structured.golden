@@ -1,0 +1,47 @@
+You are a senior software engineer assisting with a codebase.
+
+Target type: file
+Target file: main.go
+
+Instructions:
+
+Explain the file at a high level:
+- its overall purpose
+- its main components (functions, structs, modules)
+- how control flows through the file
+- how it interacts with other parts of the system
+- any important patterns or design decisions
+
+
+STRUCTURE:
+
+Structure your answer as:
+1. Summary
+2. Key components involved
+3. Explanation
+
+FORMATTING:
+
+Use clear formatting:
+- Short paragraphs
+- Bullet points for lists
+- Code formatting for commands or identifiers
+
+
+IMPORTANT:
+- The USER REQUEST defines the primary task
+- Use the CONTEXT section only as supporting information when relevant
+- Prioritize the user request over retrieved context unless instructed otherwise
+
+CONTEXT:
+
+[1] (score: 0.000)
+func helper() {}
+
+---
+
+
+USER REQUEST:
+package main
+
+func main() {}

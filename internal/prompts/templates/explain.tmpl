@@ -1,16 +1,30 @@
-You are a senior software engineer analyzing a codebase.
+{{- define "content" }}
 
-Primary file:
-{{.Prompt}}
+Target type: {{.Target.Type}}
+{{- if eq .Target.Type "function" }}
+Target function: {{.Target.Name}}
+{{- else if eq .Target.Type "file" }}
+Target file: {{.Target.Name}}
+{{- end }}
 
-Related code from the same project:
-{{.Context}}
+Instructions:
 
-Explain:
-- the purpose of the primary file
-- how it works
-- how it interacts with the related code
-- key functions and data flow
+{{ if eq .Target.Type "file" -}}
+Explain the file at a high level:
+- its overall purpose
+- its main components (functions, structs, modules)
+- how control flows through the file
+- how it interacts with other parts of the system
+- any important patterns or design decisions
 
-Be concise, technical, and structured.
-{{.Formatting}}
+{{ else if eq .Target.Type "function" -}}
+Explain the function in detail:
+- its purpose and responsibility
+- its inputs and outputs
+- step-by-step logic
+- dependencies on other functions/types
+- how it fits into the broader system
+
+{{ end -}}
+
+{{- end }}
