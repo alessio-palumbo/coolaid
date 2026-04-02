@@ -5,6 +5,7 @@ import (
 	"crypto/sha1"
 	"encoding/hex"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 
@@ -71,6 +72,8 @@ func LoadOrCreate() (*ai.Config, error) {
 		return nil, err
 	}
 
+	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelWarn}))
+
 	return &ai.Config{
 		ProjectRoot:       projectRoot,
 		StoreDir:          storeDir,
@@ -80,6 +83,7 @@ func LoadOrCreate() (*ai.Config, error) {
 		Temperature:       c.LLM.Temperature,
 		IncludeExtensions: c.Index.IncludeExtensions,
 		IgnorePatterns:    c.Index.IgnorePatterns,
+		Logger:            logger,
 	}, nil
 }
 
