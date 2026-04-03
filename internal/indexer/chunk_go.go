@@ -33,11 +33,10 @@ func ChunkGo(path string, src []byte) []Chunk {
 		startLine := fset.Position(fn.Pos()).Line
 		endLine := fset.Position(fn.End()).Line
 
-		chunks = append(chunks, Chunk{
-			StartLine: startLine,
-			EndLine:   endLine,
-			Text:      formatChunk(path, startLine, endLine, src[startOffset:endOffset]),
-		})
+		chunks = append(chunks, NewChunk(
+			startLine, endLine, fn,
+			formatChunk(path, startLine, endLine, fn, src[startOffset:endOffset]),
+		))
 	}
 
 	return chunks

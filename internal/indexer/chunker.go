@@ -1,6 +1,7 @@
 package indexer
 
 import (
+	"go/ast"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -9,13 +10,30 @@ import (
 const (
 	defaultChunkCharacters = 400
 	minChunkSize           = 50
-	chunkPathPrefix        = "file: "
+
+	astKindMethod   = "method"
+	astKindFunction = "function"
 )
 
 type Chunk struct {
-	Text      string
 	StartLine int
 	EndLine   int
+	Text      string
+	Symbol    string
+	Kind      string
+}
+
+func NewChunk(startLine, endLine int, fn *ast.FuncDecl, text string) Chunk {
+	c := Chunk{Text: text, StartLine: startLine, EndLine: endLine}
+	if fn != nil {
+		c.Symbol = fn.Name.Name
+		if fn.Recv != nil {
+			c.Kind = astKindMethod
+		} else {
+			c.Kind = astKindFunction
+		}
+	}
+	return c
 }
 
 func ChunkFile(path string, content []byte) []Chunk {
@@ -55,11 +73,10 @@ func ChunkText(path string, content []byte) []Chunk {
 				endByte--
 			}
 
-			chunks = append(chunks, Chunk{
-				StartLine: startLine,
-				EndLine:   line,
-				Text:      formatChunk(path, startLine, line, content[startByte:endByte]),
-			})
+			chunks = append(chunks, NewChunk(
+				startLine, line, nil,
+				formatChunk(path, startLine, line, nil, content[startByte:endByte]),
+			))
 
 			startByte = endByte
 			startLine = line
@@ -69,28 +86,42 @@ func ChunkText(path string, content []byte) []Chunk {
 
 	if startByte < len(content) {
 		if charCount >= minChunkSize {
-			chunks = append(chunks, Chunk{
-				StartLine: startLine,
-				EndLine:   line,
-				Text:      formatChunk(path, startLine, line, content[startByte:]),
-			})
+			chunks = append(chunks, NewChunk(
+				startLine, line, nil,
+				formatChunk(path, startLine, line, nil, content[startByte:]),
+			))
 		}
 	}
 
 	return chunks
 }
 
-func formatChunk(path string, startLine, endLine int, body []byte) string {
-	const lineNumbersApproxLen = 32
-	totalSize := len(chunkPathPrefix) + len(path) + lineNumbersApproxLen + len(body)
+func formatChunk(path string, startLine, endLine int, fn *ast.FuncDecl, body []byte) string {
+	const lineNumbersApproxLen = 16
+	const contextApproxLen = 60
+	totalSize := contextApproxLen + len(path) + lineNumbersApproxLen + len(body)
 
 	var sb strings.Builder
 	sb.Grow(totalSize)
 
-	sb.WriteString(chunkPathPrefix)
+	sb.WriteString("File: ")
 	sb.WriteString(path)
+	sb.WriteString("\n")
 
-	sb.WriteString(" (lines ")
+	if fn != nil {
+		sb.WriteString("Symbol: ")
+		sb.WriteString(fn.Name.Name)
+		sb.WriteString("\n")
+		sb.WriteString("Kind: ")
+		if fn.Recv != nil {
+			sb.WriteString(astKindMethod)
+		} else {
+			sb.WriteString(astKindFunction)
+		}
+		sb.WriteString("\n")
+	}
+
+	sb.WriteString("Lines: ")
 	// preallocate slice for line numbers
 	b := make([]byte, 0, lineNumbersApproxLen)
 	b = strconv.AppendInt(b, int64(startLine), 10)
@@ -98,7 +129,7 @@ func formatChunk(path string, startLine, endLine int, body []byte) string {
 	b = strconv.AppendInt(b, int64(endLine), 10)
 	sb.Write(b)
 
-	sb.WriteString(")\n\n")
+	sb.WriteString("\n\n")
 	sb.Write(body)
 
 	return sb.String()

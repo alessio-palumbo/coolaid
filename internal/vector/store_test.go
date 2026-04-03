@@ -60,7 +60,7 @@ func TestNewStore(t *testing.T) {
 	assert.Equal(t, store.ProjectRoot, pRoot)
 
 	// Test initialisation with data.
-	store.Add("file.go", "func A()", 1, 1, []float64{1, 0})
+	store.AddItem(Item{FilePath: "file.go", Content: "func A()", StartLine: 1, EndLine: 1, Embedding: []float64{1, 0}})
 	assert.NoError(t, store.Save())
 
 	// Reload store, same hash.
@@ -82,9 +82,9 @@ func TestNewStore(t *testing.T) {
 
 func TestSearch(t *testing.T) {
 	store := &Store{}
-	store.Add("a.go", "func A()", 1, 1, []float64{1, 0})
-	store.Add("b.go", "func B()", 1, 1, []float64{0, 1})
-	store.Add("c.go", "func C()", 1, 1, []float64{0.8, 0.2})
+	store.AddItem(Item{FilePath: "a.go", Content: "func A()", StartLine: 1, EndLine: 1, Embedding: []float64{1, 0}})
+	store.AddItem(Item{FilePath: "b.go", Content: "func B()", StartLine: 1, EndLine: 1, Embedding: []float64{0, 1}})
+	store.AddItem(Item{FilePath: "c.go", Content: "func C()", StartLine: 1, EndLine: 1, Embedding: []float64{0.8, 0.2}})
 
 	testCases := map[string]struct {
 		k             int
@@ -138,12 +138,12 @@ func BenchmarkSearch(b *testing.B) {
 
 	// populate store
 	for i := range chunks {
-		store.Add(
-			fmt.Sprintf("file%d.go", i),
-			"func test() {}",
-			1, 1,
-			randomVector(dim),
-		)
+		store.AddItem(Item{
+			FilePath:  fmt.Sprintf("file%d.go", i),
+			Content:   "func test() {}",
+			StartLine: 1, EndLine: 1,
+			Embedding: randomVector(dim),
+		})
 	}
 
 	query := randomVector(dim)

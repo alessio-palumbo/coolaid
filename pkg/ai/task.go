@@ -93,7 +93,7 @@ type IndexResult struct {
 // This method does not control how progress or results are rendered;
 // that responsibility is left to the caller.
 func (c *Client) Index(ctx context.Context, onProgress func(IndexProgress), onComplete func(IndexResult)) error {
-	if err := c.store.Clear(); err != nil {
+	if err := c.store.ResetIndex(); err != nil {
 		return err
 	}
 

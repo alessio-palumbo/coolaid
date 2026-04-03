@@ -33,10 +33,8 @@ type embedJob struct {
 
 type embedResult struct {
 	file      string
+	chunk     Chunk
 	embedding []float64
-	chunkText string
-	startLine int
-	endLine   int
 	err       error
 }
 
@@ -77,9 +75,7 @@ func (p *EmbedPipeline) worker() {
 			p.results <- embedResult{
 				file:      job.file,
 				embedding: embedding,
-				chunkText: chunk.Text,
-				startLine: chunk.StartLine,
-				endLine:   chunk.EndLine,
+				chunk:     chunk,
 				err:       err,
 			}
 		}
@@ -94,13 +90,21 @@ func (p *EmbedPipeline) collector() {
 				"embed error",
 				slog.String("error", res.err.Error()),
 				slog.String("file", res.file),
-				slog.Int("start_line", res.startLine),
-				slog.Int("end_line", res.endLine),
+				slog.Int("start_line", res.chunk.StartLine),
+				slog.Int("end_line", res.chunk.EndLine),
 			)
 			continue
 		}
 
-		p.store.Add(res.file, res.chunkText, res.startLine, res.endLine, res.embedding)
+		p.store.AddItem(vector.Item{
+			FilePath:  res.file,
+			Symbol:    res.chunk.Symbol,
+			Kind:      res.chunk.Kind,
+			StartLine: res.chunk.StartLine,
+			EndLine:   res.chunk.EndLine,
+			Content:   res.chunk.Text,
+			Embedding: res.embedding,
+		})
 
 		// increment done per file
 		if _, ok := filesDone[res.file]; !ok {

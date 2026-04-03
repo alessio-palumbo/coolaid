@@ -8,15 +8,15 @@ import (
 	"time"
 )
 
-const metaVersion = "v1"
+const metaVersion = "v2"
 
 var (
 	ErrReindexRequired = fmt.Errorf("index is outdated: rebuild required")
 	ErrNotIndexed      = fmt.Errorf("not indexed: index must be built")
 )
 
-// Clear deletes all embeddings and summary data from the DB.
-func (s *Store) Clear() error {
+// ResetIndex resets the embeddings table and clears summary data from the DB.
+func (s *Store) ResetIndex() (err error) {
 	tx, err := s.db.Begin()
 	if err != nil {
 		return err
@@ -27,7 +27,12 @@ func (s *Store) Clear() error {
 		}
 	}()
 
-	_, err = tx.Exec(`DELETE FROM embeddings`)
+	_, err = tx.Exec(dropEmbeddingsSchema)
+	if err != nil {
+		return err
+	}
+
+	_, err = tx.Exec(createEmbeddingsSchema)
 	if err != nil {
 		return err
 	}
@@ -69,8 +74,8 @@ func (s *Store) Save() error {
 	}
 
 	stmt, err := tx.Prepare(`
-	    INSERT INTO embeddings(filepath, startline, endline, content, embedding)
-	    VALUES(?, ?, ?, ?, ?)
+	    INSERT INTO embeddings(filepath, symbol, kind, startline, endline, content, embedding)
+	    VALUES(?, ?, ?, ?, ?, ?, ?)
 	`)
 	if err != nil {
 		return err
@@ -84,8 +89,8 @@ func (s *Store) Save() error {
 		}
 
 		_, err = stmt.Exec(
-			item.FilePath, item.StartLine,
-			item.EndLine, item.Content, blob)
+			item.FilePath, item.Symbol, item.Kind,
+			item.StartLine, item.EndLine, item.Content, blob)
 		if err != nil {
 			return err
 		}
@@ -117,7 +122,7 @@ func (s *Store) Load() error {
 	}
 
 	rows, err := s.db.Query(`
-	    SELECT filepath, startline, endline, content, embedding
+	    SELECT filepath, symbol, kind, startline, endline, content, embedding
 	    FROM embeddings
 	`)
 	if err != nil {
@@ -133,8 +138,8 @@ func (s *Store) Load() error {
 		)
 
 		err := rows.Scan(
-			&item.FilePath, &item.StartLine,
-			&item.EndLine, &item.Content, &blob)
+			&item.FilePath, &item.Symbol, &item.Kind,
+			&item.StartLine, &item.EndLine, &item.Content, &blob)
 		if err != nil {
 			return err
 		}
@@ -229,24 +234,7 @@ func (s *Store) init() error {
 		return err
 	}
 
-	query := `
-	    CREATE TABLE IF NOT EXISTS embeddings (
-	        id INTEGER PRIMARY KEY,
-	        filepath TEXT,
-	        startline INTEGER,
-	        endline INTEGER,
-	        content TEXT,
-	        embedding BLOB
-	    );
-
-	    CREATE TABLE IF NOT EXISTS summary (
-	        project_root TEXT PRIMARY KEY,
-	        content TEXT,
-	        updated_at TEXT
-	    );
-	`
-
-	_, err := s.db.Exec(query)
+	_, err := s.db.Exec(createSummarySchema)
 	return err
 }
 
@@ -255,7 +243,7 @@ func (s *Store) init() error {
 // If the version is out of date or the config hash has changed
 // it returns an error prompting an index rebuild.
 func (s *Store) ensureMetadata() error {
-	if err := s.createMeta(); err != nil {
+	if _, err := s.db.Exec(createMetaSchema); err != nil {
 		return err
 	}
 
@@ -272,25 +260,13 @@ func (s *Store) ensureMetadata() error {
 	return nil
 }
 
-func (s *Store) createMeta() error {
-	_, err := s.db.Exec(`
-	    CREATE TABLE IF NOT EXISTS meta (
-		id           INTEGER PRIMARY KEY CHECK (id = 1),
-		project_root TEXT NOT NULL,
-		config_hash  TEXT,
-		version      TEXT NOT NULL DEFAULT 'v1',
-		created_at   TEXT NOT NULL
-	    )
-	`)
-	return err
-}
-
 func (s *Store) resetMetaTable() error {
-	_, err := s.db.Exec(`DROP TABLE IF EXISTS meta`)
+	_, err := s.db.Exec(dropMetaSchema)
 	if err != nil {
 		return err
 	}
-	return s.createMeta()
+	_, err = s.db.Exec(createMetaSchema)
+	return err
 }
 
 func hasColumn(db *sql.DB, table, column string) (bool, error) {

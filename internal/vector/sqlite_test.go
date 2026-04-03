@@ -9,14 +9,14 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestClear(t *testing.T) {
+func TestResetIndex(t *testing.T) {
 	s, _ := newTestStore(t)
 
 	s.Items = []Item{{FilePath: "a.go", StartLine: 1, EndLine: 2, Content: "x", Embedding: []float64{1, 2}}}
 	s.Summary = "hello"
 
 	require.NoError(t, s.Save())
-	require.NoError(t, s.Clear())
+	require.NoError(t, s.ResetIndex())
 
 	var count int
 	require.NoError(t, s.db.QueryRow(`SELECT COUNT(*) FROM embeddings`).Scan(&count))
@@ -74,7 +74,9 @@ func TestLoad(t *testing.T) {
 	require.ErrorIs(t, err, ErrNotIndexed)
 
 	// Add data
-	s.Items = []Item{{FilePath: "a.go", StartLine: 1, EndLine: 2, Content: "x", Embedding: []float64{1, 2}}}
+	item0 := Item{FilePath: "a.go", StartLine: 1, EndLine: 2, Content: "x", Embedding: []float64{1, 2}}
+	item1 := Item{FilePath: "b.go", Symbol: "B", Kind: "function", StartLine: 1, EndLine: 2, Content: "func B()", Embedding: []float64{1, 1}}
+	s.Items = []Item{item0, item1}
 	s.Summary = "hello"
 	require.NoError(t, s.Save())
 
@@ -84,8 +86,9 @@ func TestLoad(t *testing.T) {
 	require.NoError(t, s.Load())
 	require.True(t, s.loaded)
 
-	require.Len(t, s.Items, 1)
-	require.Equal(t, "a.go", s.Items[0].FilePath)
+	require.Len(t, s.Items, 2)
+	require.Equal(t, item0, s.Items[0])
+	require.Equal(t, item1, s.Items[1])
 	require.Equal(t, "hello", s.Summary)
 }
 
@@ -149,7 +152,7 @@ func TestValidateIndex(t *testing.T) {
 
 func TestSaveLoad(t *testing.T) {
 	store, tmpDir := newTestStore(t)
-	store.Add("file.go", "func test()", 1, 1, []float64{1, 2, 3})
+	store.AddItem(Item{FilePath: "file.go", Content: "func test()", StartLine: 1, EndLine: 1, Embedding: []float64{1, 2, 3}})
 	store.AddSummary("summary")
 	assert.NoError(t, store.Save())
 

@@ -22,6 +22,8 @@ const mmrOversampleFactor = 4
 // Item represents a Chunk and it's metadata.
 type Item struct {
 	FilePath  string
+	Symbol    string
+	Kind      string
 	StartLine int
 	EndLine   int
 	Content   string
@@ -94,17 +96,12 @@ func (s *Store) Close() error {
 	return s.db.Close()
 }
 
-// Add adds a chunk to the in-memory index.
+// AddItem adds a chunk to the in-memory index.
 // The embedding is normalized so that cosine
 // similarity can be computed efficiently during search.
-func (s *Store) Add(path, text string, startLine, endLine int, emb []float64) {
-	s.Items = append(s.Items, Item{
-		FilePath:  path,
-		StartLine: startLine,
-		EndLine:   endLine,
-		Content:   text,
-		Embedding: normalize(emb),
-	})
+func (s *Store) AddItem(i Item) {
+	i.Embedding = normalize(i.Embedding)
+	s.Items = append(s.Items, i)
 }
 
 // AddSummary adds a summary to the in-memory Store.
