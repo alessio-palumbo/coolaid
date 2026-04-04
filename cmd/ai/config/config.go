@@ -1,3 +1,6 @@
+// This package handles configuration loading and runtime enrichment.
+// Static configuration is loaded from TOML, while dynamic values such as
+// project root and database name are derived at runtime.
 package config
 
 import (
@@ -8,6 +11,8 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"regexp"
+	"strings"
 
 	"github.com/pelletier/go-toml/v2"
 )
@@ -22,7 +27,10 @@ const (
 	defaultTemperature    = 0.2
 )
 
+var dbNameValidChars = regexp.MustCompile(`[^a-z0-9._-]+`)
+
 type config struct {
+	// Runtime-only fields (not loaded from TOML)
 	StoreDir    string              `toml:"-"`
 	ProjectRoot string              `toml:"-"`
 	DBName      string              `toml:"-"`
@@ -40,6 +48,10 @@ type config struct {
 	} `toml:"index"`
 }
 
+// LoadOrCreate initializes the application configuration.
+// It ensures required directories exist, creates a default config file if missing,
+// loads user configuration, and enriches it with runtime-derived values
+// such as project root and database name.
 func LoadOrCreate() (*ai.Config, error) {
 	home, err := os.UserHomeDir()
 	if err != nil {
@@ -77,7 +89,7 @@ func LoadOrCreate() (*ai.Config, error) {
 	return &ai.Config{
 		ProjectRoot:       projectRoot,
 		StoreDir:          storeDir,
-		DBName:            projectRootHash(projectRoot),
+		DBName:            dbName(projectRoot),
 		Model:             c.LLM.Model,
 		EmbeddingModel:    c.LLM.EmbeddingModel,
 		Temperature:       c.LLM.Temperature,
@@ -87,6 +99,8 @@ func LoadOrCreate() (*ai.Config, error) {
 	}, nil
 }
 
+// writeDefaultConfig writes a minimal default configuration file
+// with predefined LLM and embedding settings.
 func writeDefaultConfig(path string) error {
 	c := config{}
 	c.LLM.Model = defaultLLMModel
@@ -114,6 +128,11 @@ func loadConfig(cfgPath string) (*config, error) {
 	return &cfg, nil
 }
 
+// projectRoot walks up from the current working directory to find the nearest
+// directory containing a .git folder. If none is found, it returns the current
+// working directory.
+//
+// This ensures the CLI operates at the repository level rather than per subdirectory.
 func projectRoot() (string, error) {
 	dir, err := os.Getwd()
 	if err != nil {
@@ -136,11 +155,32 @@ func projectRoot() (string, error) {
 	}
 }
 
+// projectRootHash returns a short, deterministic hash of the project root path.
+// This is used to avoid collisions between projects with the same name.
 func projectRootHash(projectRoot string) string {
 	hash := sha1.Sum([]byte(projectRoot))
-	return hex.EncodeToString(hash[:8])
+	return hex.EncodeToString(hash[:])[:8]
 }
 
+// dbName generates a human-readable yet collision-resistant database name
+// based on the project root directory.
+//
+// Format: <sanitized-project-name>_<short-hash>
+func dbName(root string) string {
+	return fmt.Sprintf("%s_%s", sanitize(filepath.Base(root)), projectRootHash(root))
+}
+
+// sanitize normalizes a string to be filesystem-safe by:
+// - converting to lowercase
+// - replacing invalid characters with underscores
+// - trimming leading/trailing underscores
+func sanitize(s string) string {
+	s = strings.ToLower(s)
+	s = dbNameValidChars.ReplaceAllString(s, "_")
+	return strings.Trim(s, "_")
+}
+
+// fileExists returns true if the given path exists and is not a directory.
 func fileExists(path string) bool {
 	info, err := os.Stat(path)
 	return err == nil && !info.IsDir()
