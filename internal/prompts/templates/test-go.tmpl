@@ -1,6 +1,20 @@
 {{- define "content" }}
 
+TARGET TYPE: {{.Target.Type}}
+{{- if eq .Target.Type "function" }}
+TARGET FUNCTION: {{.Target.Name}}
+{{- else if eq .Target.Type "file" }}
+TARGET FILE: {{.Target.Name}}
+{{- end }}
+
+Instructions:
+
 Generate high-quality unit tests for the provided code.
+{{ if eq .Target.Type "file" -}}
+Only provide tests for the code included in USER REQUEST.
+{{ else if eq .Target.Type "function" -}}
+Only provide tests for the TARGET FUNCTION in USER REQUEST.
+{{ end -}}
 
 Requirements:
 - Use idiomatic Go

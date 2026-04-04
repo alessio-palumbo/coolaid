@@ -28,7 +28,7 @@ func (b *SummaryBuilder) AddFile(path string, content []byte) {
 		b.readme = string(content[:n])
 	}
 
-	signals := query.ExtractSignals(path, content)
+	signals := query.ExtractSignals(path, content, true)
 	for s := range strings.SplitSeq(signals, "\n") {
 		if s != "" {
 			b.symbols[s] = struct{}{}

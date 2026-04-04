@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"time"
 
 	_ "github.com/mattn/go-sqlite3"
@@ -168,9 +169,10 @@ func (s *Store) FindBySymbol(query, sym string, limit int) ([]Result, error) {
 		return nil, err
 	}
 
+	nSym := normalizeSymbol(sym)
 	var results []Result
 	for _, it := range s.Items {
-		if it.Symbol == sym {
+		if it.Symbol == nSym {
 			results = append(results, Result{
 				Item:  it,
 				Score: scoreSymbol(it, query),
@@ -186,30 +188,6 @@ func (s *Store) FindBySymbol(query, sym string, limit int) ([]Result, error) {
 		return cmp.Compare(b.Score, a.Score)
 	})
 	return results, nil
-}
-
-// scoreSymbol assigns a relevance score to a symbol-matched item.
-//
-// Symbol matches are treated as high-confidence signals and start with a high base score.
-// An additional boost is applied for exact matches (defensive, in case of future fuzzy matching).
-//
-// A small penalty is applied based on chunk length to prefer more focused (shorter) code blocks,
-// which tend to produce more precise LLM outputs.
-//
-// Note: This scoring is intentionally simple and only used to rank multiple symbol matches.
-// It is not comparable to cosine similarity scores from vector search.
-func scoreSymbol(item Item, query string) float64 {
-	score := 1.0
-
-	if item.Symbol == query {
-		score += 1.0 // exact match boost
-	}
-
-	// optional: prefer shorter chunks (more focused)
-	length := item.EndLine - item.StartLine
-	score -= float64(length) * 0.001
-
-	return score
 }
 
 func (s *Store) topK(query []float64, k int) []Result {
@@ -282,4 +260,43 @@ func openDB(path string) (*sql.DB, error) {
 		return nil, err
 	}
 	return sql.Open("sqlite3", path)
+}
+
+// scoreSymbol assigns a relevance score to a symbol-matched item.
+//
+// Symbol matches are treated as high-confidence signals and start with a high base score.
+// An additional boost is applied for exact matches (defensive, in case of future fuzzy matching).
+//
+// A small penalty is applied based on chunk length to prefer more focused (shorter) code blocks,
+// which tend to produce more precise LLM outputs.
+//
+// Note: This scoring is intentionally simple and only used to rank multiple symbol matches.
+// It is not comparable to cosine similarity scores from vector search.
+func scoreSymbol(item Item, query string) float64 {
+	score := 1.0
+
+	if item.Symbol == query {
+		score += 1.0 // exact match boost
+	}
+
+	// optional: prefer shorter chunks (more focused)
+	length := item.EndLine - item.StartLine
+	score -= float64(length) * 0.001
+
+	return score
+}
+
+// normalizeSymbol extracts the base identifier from a possibly qualified symbol.
+//
+// It strips any prefix before the last '.', allowing inputs like "pkg.Func"
+// to match stored symbols like "Func". If no qualifier is present, the input
+// is returned unchanged.
+//
+// This provides a lightweight, language-agnostic way to improve symbol matching
+// without requiring explicit module/package support.
+func normalizeSymbol(s string) string {
+	if i := strings.LastIndex(s, "."); i != -1 {
+		return s[i+1:]
+	}
+	return s
 }

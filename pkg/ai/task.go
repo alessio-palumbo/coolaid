@@ -167,51 +167,6 @@ func (c *Client) Summarize(ctx context.Context, file string) error {
 	return c.llm.GenerateStream(prompt, c.writer)
 }
 
-// Explain analyzes a target and generates an explanation using
-// relevant context retrieved from the index.
-
-// It attempts to identify related code (dependencies, symbols)
-// and excludes the target file itself from the retrieved context
-// to avoid redundant information.
-func (c *Client) Explain(ctx context.Context, target Target, opts ...TaskOption) (TaskResult, error) {
-	if err := target.validate(); err != nil {
-		return TaskResult{}, nil
-	}
-
-	data, err := os.ReadFile(target.File)
-	if err != nil {
-		return TaskResult{}, err
-	}
-
-	// Find dependencies chunks to pass as dependencies to LLM.
-	signals := query.ExtractSignals(target.File, data)
-	taskCfg := parseTaskOptions(opts...)
-	results, err := c.SemanticSearch(ctx, signals, taskCfg.retrieval.k, taskCfg.retrieval.useMMR)
-	if err != nil {
-		return TaskResult{}, err
-	}
-	if len(results) == 0 {
-		return TaskResult{Status: TaskStatus{NoResults: true}}, nil
-	}
-
-	// Exclude any chunks matching the file to avoid wasting tokens.
-	for i, r := range results {
-		if strings.Contains(r.FilePath, target.File) {
-			results = slices.Delete(results, i, i+1)
-		}
-	}
-
-	prompt, err := prompts.Render(
-		(&prompts.Config{Template: prompts.TemplateExplain}).WithTarget(target.File, target.Function),
-		extractTarget(data, target.Function), results...,
-	)
-	if err != nil {
-		return TaskResult{}, err
-	}
-
-	return TaskResult{}, c.llm.GenerateStream(prompt, c.writer)
-}
-
 // Search performs a semantic search against the index and writes
 // the matching results to the configured writer.
 //
@@ -298,23 +253,54 @@ func (c *Client) Query(ctx context.Context, prompt string, opts ...TaskOption) (
 	return TaskResult{}, c.llm.GenerateStream(renderedPrompt, c.writer)
 }
 
+// Explain analyzes a target and generates an explanation using
+// relevant context retrieved from the index.
+
+// It attempts to identify related code (dependencies, symbols)
+// and excludes the target file itself from the retrieved context
+// to avoid redundant information.
+func (c *Client) Explain(ctx context.Context, target Target, opts ...TaskOption) (TaskResult, error) {
+	taskCfg := parseTaskOptions(opts...)
+
+	results, data, err := c.retrieveFromTarget(ctx, target, taskCfg)
+	if err != nil {
+		return TaskResult{}, err
+	}
+	if len(results) == 0 {
+		return TaskResult{Status: TaskStatus{NoResults: true}}, nil
+	}
+
+	// Exclude any chunks matching the file to avoid wasting tokens.
+	for i, r := range results {
+		if strings.Contains(r.FilePath, target.File) {
+			results = slices.Delete(results, i, i+1)
+		}
+	}
+
+	pConfig := &prompts.Config{
+		Template:       prompts.TemplateExplain,
+		SystemOverride: taskCfg.prompt.systemOverride,
+		Structured:     taskCfg.prompt.structuredOutput,
+	}
+	prompt, err := prompts.Render(
+		pConfig.WithTarget(target.File, target.Function),
+		extractTarget(data, target.Function), results...,
+	)
+	if err != nil {
+		return TaskResult{}, err
+	}
+
+	return TaskResult{}, c.llm.GenerateStream(prompt, c.writer)
+}
+
 // GenerateTests generates tests for a given target.
 //
 // It retrieves relevant context from the index and uses a language-
 // specific template when supported.
 func (c *Client) GenerateTests(ctx context.Context, target Target, opts ...TaskOption) (TaskResult, error) {
-	if err := target.validate(); err != nil {
-		return TaskResult{}, nil
-	}
-
-	data, err := os.ReadFile(target.File)
-	if err != nil {
-		return TaskResult{}, err
-	}
-
-	signals := query.ExtractSignals(target.File, data)
 	taskCfg := parseTaskOptions(opts...)
-	results, err := c.SemanticSearch(ctx, signals, taskCfg.retrieval.k, taskCfg.retrieval.useMMR)
+
+	results, data, err := c.retrieveFromTarget(ctx, target, taskCfg)
 	if err != nil {
 		return TaskResult{}, err
 	}
@@ -400,6 +386,37 @@ func (c *Client) SemanticSearch(ctx context.Context, prompt string, k int, useMM
 	return c.store.Search(queryVec, k, useMMR)
 }
 
+// retrieveFromTarget prepares retrieval context for a given Target.
+//
+// It validates the target, reads the file content, and extracts semantic signals
+// (e.g. identifiers, comments, structure) from the source. These signals are then
+// used to perform a semantic search against the indexed codebase to find relevant
+// dependency chunks.
+//
+// The returned results represent supporting context (e.g. related functions,
+// types, or usages) that can be passed to the LLM alongside the target code.
+//
+// The raw file content is also returned so callers can extract the specific
+// function or file segment to include in the final prompt.
+//
+// Note: This method currently performs semantic-only retrieval. It may be extended
+// in the future to leverage hybrid (symbol + semantic) search for improved precision.
+func (c *Client) retrieveFromTarget(ctx context.Context, target Target, taskCfg *queryConfig) ([]vector.Result, []byte, error) {
+	if err := target.validate(); err != nil {
+		return nil, nil, err
+	}
+
+	data, err := os.ReadFile(target.File)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	// Find dependencies chunks to pass as dependencies to LLM.
+	signals := query.ExtractSignals(target.File, data, false)
+	results, err := c.DoSearch(ctx, signals, taskCfg.retrieval.k, taskCfg.retrieval.useMMR, false)
+	return results, data, err
+}
+
 // enrichWithSummary appends repository summary context to the prompt.
 func enrichWithSummary(prompt, summary string) string {
 	return prompt + "\n\n" + summary
@@ -447,6 +464,9 @@ func extractTarget(src []byte, fn string) string {
 		}
 
 		start := fset.Position(f.Pos()).Offset
+		if f.Doc != nil {
+			start = fset.Position(f.Doc.Pos()).Offset
+		}
 		end := fset.Position(f.End()).Offset
 		return string(src[start:end])
 	}

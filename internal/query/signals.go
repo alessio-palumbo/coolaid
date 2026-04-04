@@ -8,6 +8,13 @@ import (
 	"strings"
 )
 
+// goBuiltins is a simple map of common go built-in that should
+// be excluded from the returned signals.
+var goBuiltins = map[string]struct{}{
+	"len": {}, "cap": {}, "make": {}, "new": {},
+	"append": {}, "delete": {}, "copy": {},
+}
+
 // ExtractSignals returns a signal-rich textual representation of a file
 // used for embedding and semantic search.
 //
@@ -17,10 +24,10 @@ import (
 //
 // The returned string is optimized for retrieval quality, not for display or
 // direct use in LLM prompts.
-func ExtractSignals(path string, content []byte) string {
+func ExtractSignals(path string, content []byte, includeLocal bool) string {
 	switch filepath.Ext(path) {
 	case ".go":
-		return extractGoSignals(content)
+		return extractGoSignals(content, includeLocal)
 	default:
 		return extractTextSignals(content)
 	}
@@ -28,7 +35,7 @@ func ExtractSignals(path string, content []byte) string {
 
 // extractGoSignals extracts meaningful identifiers (function calls and definitions)
 // from Go source code using the AST.
-func extractGoSignals(src []byte) string {
+func extractGoSignals(src []byte, includeLocal bool) string {
 	fset := token.NewFileSet()
 	file, err := parser.ParseFile(fset, "", src, 0)
 	if err != nil {
@@ -42,15 +49,23 @@ func extractGoSignals(src []byte) string {
 		switch node := n.(type) {
 		case *ast.FuncDecl:
 			// function definition
-			add(node.Name.Name)
+			if includeLocal {
+				add(node.Name.Name)
+			}
 		case *ast.CallExpr:
 			switch fun := node.Fun.(type) {
 			// identifier
 			case *ast.Ident:
-				add(fun.Name)
+				if _, isBuiltin := goBuiltins[fun.Name]; !isBuiltin {
+					add(fun.Name)
+				}
 			// method call
 			case *ast.SelectorExpr:
-				add(fun.Sel.Name)
+				if pkgIdent, ok := fun.X.(*ast.Ident); ok {
+					add(pkgIdent.Name + "." + fun.Sel.Name)
+				} else if includeLocal {
+					add(fun.Sel.Name)
+				}
 			}
 		case *ast.ImportSpec:
 			if node.Path != nil {
