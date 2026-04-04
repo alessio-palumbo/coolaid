@@ -11,7 +11,6 @@ func IndexCommand(client *ai.Client) *cli.Command {
 	return &cli.Command{
 		Name:  "index",
 		Usage: "index the current repository",
-
 		Action: func(c *cli.Context) error {
 			fmt.Println("Indexing project at", client.ProjectRoot())
 

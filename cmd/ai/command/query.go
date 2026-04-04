@@ -29,9 +29,13 @@ func QueryCommand(client *ai.Client, sw *spinner.StreamWriter) *cli.Command {
 		},
 		Action: func(c *cli.Context) error {
 			prompt := strings.TrimSpace(strings.Join(c.Args().Slice(), " "))
+			opts := []ai.TaskOption{ai.WithRetrievalMode(ai.RetrievalMode(c.String("mode")))}
+			if c.Bool("v") {
+				opts = append(opts, ai.WithStructuredOutput())
+			}
 
 			result, err := spinner.Wrap(sw, func() (ai.TaskResult, error) {
-				return client.Query(c.Context, prompt, ai.WithRetrievalMode(ai.RetrievalMode(c.String("mode"))))
+				return client.Query(c.Context, prompt, opts...)
 			})
 			if err != nil {
 				return catchIndexError(err)

@@ -36,52 +36,65 @@ go build -o ai
 | ----------- | ---------------------------------------------------------------------------------------------------- |
 | `ask`       | Ask the AI any general question (no indexing required)                                               |
 | `summarize` | Summarize code or text input                                                                         |
-| `explain`   | Explain a piece of code or file                                                                      |
 | `index`     | Build the vector index of your codebase                                                              |
 | `search`    | Perform a semantic search and return top K chunks                                                    |
 | `query`     | Ask a question over your indexed code (RAG: retrieves top-K relevant chunks and generates an answer) |
+| `explain`   | Explain a piece of code or file                                                                      |
+| `test`      | Generate tests for a piece of code or file                                                           |
 
 ---
 
 ## Examples
 
-### Ask the AI a general question
+### Ask the AI a general question (LLM only)
 
 ```bash
 ./ai ask "What is a mutex in Go?"
 ```
 
-### Summarize code
+### Summarize code (LLM only)
 
 ```bash
 ./ai summarize path/to/file.go
 ```
 
-### Explain code
-
-```bash
-./ai explain path/to/file.go
-```
-
-### Build a semantic index
+### Build a semantic index (required to perform any of the action below)
 
 ```bash
 ./ai index ./my-repo
 ```
 
-### Search for code snippets
+### Search for code snippets (Symbol match + semantic search)
 
 ```bash
 ./ai search "vector store embedding normalization"
 ```
 
+- -k specifies the number of top chunks to retrieve (default: 5)
+
 ### Query the codebase using the LLM
 
 ```bash
-./ai query "How is the vector store implemented?" --k 5
+./ai query "How is the vector store implemented?" -mode balanced
 ```
 
-- --k specifies the number of top chunks to retrieve (default: 5)
+- -mode specifies the default mode use for RAG: fast, balanced or deep (use MMR)
+
+### Explain code
+
+```bash
+./ai explain path/to/file.go [-fn functionName]
+```
+
+- -fn optional, targets functionName only
+
+### Generate test
+
+```bash
+./ai test path/to/file.go [-fn functionName]
+```
+
+- -fn optional, targets functionName only
 
 ---
 

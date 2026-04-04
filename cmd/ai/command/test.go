@@ -12,8 +12,17 @@ func TestCommand(client *ai.Client, sw *spinner.StreamWriter) *cli.Command {
 	return &cli.Command{
 		Name:  "test",
 		Usage: "generate tests for a file or function",
+		Flags: []cli.Flag{
+			&cli.StringFlag{
+				Name:  "fn",
+				Usage: "function to generate test for",
+			},
+		},
 		Action: func(c *cli.Context) error {
-			target := parseTarget(c.Args().First())
+			target := ai.Target{
+				File:     c.Args().First(),
+				Function: c.String("fn"),
+			}
 
 			result, err := spinner.Wrap(sw, func() (ai.TaskResult, error) {
 				return client.GenerateTests(c.Context, target, ai.WithRetrievalMode(ai.RetrievalBalanced))
