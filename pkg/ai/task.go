@@ -5,6 +5,7 @@ import (
 	"ai-cli/internal/prompts"
 	"ai-cli/internal/query"
 	"ai-cli/internal/vector"
+	"ai-cli/internal/web"
 	"cmp"
 	"context"
 	"errors"
@@ -140,12 +141,31 @@ func (c *Client) Index(ctx context.Context, onProgress func(IndexProgress), onCo
 	return nil
 }
 
+type AskOptions struct {
+	UseWeb bool
+}
+
 // Ask sends a raw prompt directly to the LLM and streams the response.
 //
 // This bypasses the index and does not perform any retrieval.
-func (c *Client) Ask(ctx context.Context, prompt string) error {
+func (c *Client) Ask(ctx context.Context, prompt string, opts AskOptions) error {
 	if prompt == "" {
 		return ErrEmptyPrompt
+	}
+
+	if opts.UseWeb {
+		chunks, err := web.NewPipeline(5).Run(ctx, prompt)
+		if err != nil {
+			return err
+		}
+
+		prompt, err = prompts.Render(
+			&prompts.Config{Template: prompts.TemplateQuery},
+			prompt, chunks...,
+		)
+		if err != nil {
+			return err
+		}
 	}
 	return c.llm.GenerateStream(prompt, c.writer)
 }

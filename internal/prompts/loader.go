@@ -17,6 +17,7 @@ const (
 	TemplateChat        promptTemplate = "chat.tmpl"
 	TemplateTestGo      promptTemplate = "test-go.tmpl"
 	TemplateTestGeneric promptTemplate = "test-generic.tmpl"
+	TemplateAskWeb      promptTemplate = "ask-web.tmpl"
 )
 
 type targetType string
@@ -46,8 +47,16 @@ var promptFS embed.FS
 // Precompiled templates
 var templates = make(map[string]*template.Template)
 
+var funcMap = template.FuncMap{
+	"add": func(a, b int) int { return a + b },
+}
+
 func init() {
-	base := template.Must(template.ParseFS(promptFS, "templates/base.tmpl"))
+	var funcMap = template.FuncMap{
+		"add": func(a, b int) int { return a + b },
+	}
+
+	base := template.Must(template.New("base.tmpl").Funcs(funcMap).ParseFS(promptFS, "templates/base.tmpl"))
 
 	// List all templates here (your "modes")
 	files := []string{
