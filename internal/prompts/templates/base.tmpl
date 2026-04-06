@@ -30,9 +30,16 @@ IMPORTANT:
 - Prioritize the USER REQUEST over retrieved context unless instructed otherwise
 {{ end }}
 
-{{- if .Context }}
+{{- if .ContextChunks }}
 CONTEXT:
-{{ .Context }}
+{{ range $i, $c := .ContextChunks }}
+[{{ add $i 1 }}] {{ $c.Source }}
+{{- if gt $c.Score 0.0 -}}{{ printf "\nScore: %.3f" $c.Score }}{{ end }}
+
+{{ $c.Text }}
+
+---
+{{ end }}
 {{- end }}
 
 USER REQUEST:

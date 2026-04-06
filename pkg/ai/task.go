@@ -245,7 +245,7 @@ func (c *Client) Query(ctx context.Context, prompt string, opts ...TaskOption) (
 	if usedSummary {
 		pConfig.Summary = c.store.Summary
 	}
-	renderedPrompt, err := prompts.Render(pConfig, prompt, results...)
+	renderedPrompt, err := prompts.Render(pConfig, prompt, vector.ToContextChunks(results...)...)
 	if err != nil {
 		return TaskResult{}, err
 	}
@@ -284,7 +284,7 @@ func (c *Client) Explain(ctx context.Context, target Target, opts ...TaskOption)
 	}
 	prompt, err := prompts.Render(
 		pConfig.WithTarget(target.File, target.Function),
-		extractTarget(data, target.Function), results...,
+		extractTarget(data, target.Function), vector.ToContextChunks(results...)...,
 	)
 	if err != nil {
 		return TaskResult{}, err
@@ -320,7 +320,7 @@ func (c *Client) GenerateTests(ctx context.Context, target Target, opts ...TaskO
 
 	prompt, err := prompts.Render(
 		pConfig.WithTarget(target.File, target.Function),
-		extractTarget(data, target.Function), results...)
+		extractTarget(data, target.Function), vector.ToContextChunks(results...)...)
 	if err != nil {
 		return TaskResult{}, err
 	}

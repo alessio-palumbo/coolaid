@@ -3,6 +3,7 @@ package ai
 import (
 	"ai-cli/internal/llm"
 	"ai-cli/internal/prompts"
+	"ai-cli/internal/vector"
 	"context"
 )
 
@@ -62,7 +63,7 @@ func (s *ChatSession) Send(ctx context.Context, msg string) error {
 		Template:       prompts.TemplateChat,
 		SystemOverride: s.cfg.prompt.systemOverride,
 		Structured:     s.cfg.prompt.structuredOutput,
-	}, msg, results...)
+	}, msg, vector.ToContextChunks(results...)...)
 	if err != nil {
 		return err
 	}

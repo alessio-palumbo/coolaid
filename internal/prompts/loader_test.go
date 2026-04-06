@@ -1,7 +1,7 @@
 package prompts
 
 import (
-	"ai-cli/internal/vector"
+	"ai-cli/internal/retrieval"
 	"flag"
 	"os"
 	"path/filepath"
@@ -17,7 +17,7 @@ func TestRender(t *testing.T) {
 	tests := map[string]struct {
 		cfg     *Config
 		prompt  string
-		context []vector.Result
+		context []retrieval.Chunk
 		golden  string
 	}{
 		"explain_file_structured": {
@@ -26,8 +26,8 @@ func TestRender(t *testing.T) {
 				Structured: true,
 			}).WithTarget("main.go", ""),
 			prompt: "package main\n\nfunc main() {}",
-			context: []vector.Result{
-				{Item: vector.Item{Content: "func helper() {}"}},
+			context: []retrieval.Chunk{
+				{Text: "func helper() {}", Source: "/example/file.go", Score: 0.879},
 			},
 			golden: "explain_file_structured.golden",
 		},
@@ -37,8 +37,8 @@ func TestRender(t *testing.T) {
 				Template: TemplateExplain,
 			}).WithTarget("main.go", "main"),
 			prompt: "func main() {}",
-			context: []vector.Result{
-				{Item: vector.Item{Content: "func helper() {}"}},
+			context: []retrieval.Chunk{
+				{Text: "func helper() {}", Source: "/example/file.go"},
 			},
 			golden: "explain_function.golden",
 		},
@@ -58,8 +58,8 @@ func TestRender(t *testing.T) {
 				Summary:  "This repository handles user management.",
 			},
 			prompt: "package main\n\nfunc main() {}",
-			context: []vector.Result{
-				{Item: vector.Item{Content: "user repository code"}},
+			context: []retrieval.Chunk{
+				{Text: "user repository code", Source: "/example/file.go"},
 			},
 			golden: "with_summary.golden",
 		},

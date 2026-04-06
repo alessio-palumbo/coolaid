@@ -1,7 +1,7 @@
 package prompts
 
 import (
-	"ai-cli/internal/vector"
+	"ai-cli/internal/retrieval"
 	"bytes"
 	"embed"
 	"fmt"
@@ -99,12 +99,12 @@ type templateData struct {
 	StructuredInstructions string
 	Formatting             string
 	Prompt                 string
-	Context                string
+	ContextChunks          []retrieval.Chunk
 	Summary                string
 	Target                 Target
 }
 
-func Render(cfg *Config, prompt string, context ...vector.Result) (string, error) {
+func Render(cfg *Config, prompt string, context ...retrieval.Chunk) (string, error) {
 	if cfg == nil {
 		return "", fmt.Errorf("template config must be set")
 	}
@@ -115,12 +115,12 @@ func Render(cfg *Config, prompt string, context ...vector.Result) (string, error
 	}
 
 	td := templateData{
-		System:     cfg.SystemOverride,
-		Formatting: formattingDirectives,
-		Prompt:     prompt,
-		Context:    vector.JoinResults(context...),
-		Summary:    cfg.Summary,
-		Target:     cfg.Target,
+		System:        cfg.SystemOverride,
+		Formatting:    formattingDirectives,
+		Prompt:        prompt,
+		ContextChunks: context,
+		Summary:       cfg.Summary,
+		Target:        cfg.Target,
 	}
 
 	if cfg.Structured {

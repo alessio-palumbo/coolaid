@@ -31,11 +31,12 @@ This repository handles user management.
 IMPORTANT:
 - The USER REQUEST defines the primary task
 - Use the CONTEXT section only as supporting information when relevant
-- Prioritize the user request over retrieved context unless instructed otherwise
+- Prioritize the USER REQUEST over retrieved context unless instructed otherwise
 
 CONTEXT:
 
-[1] (score: 0.000)
+[1] /example/file.go
+
 user repository code
 
 ---

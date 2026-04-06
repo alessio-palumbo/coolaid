@@ -1,6 +1,7 @@
 package vector
 
 import (
+	"ai-cli/internal/retrieval"
 	"cmp"
 	"container/heap"
 	"database/sql"
@@ -64,6 +65,21 @@ func JoinResults(results ...Result) string {
 			r.Score,
 			r.Content,
 		)
+	}
+	return out
+}
+
+// ToContextChunks converts vector search results into retrieval.Chunk values
+// suitable for LLM prompting. It maps content, source, and score into a
+// unified format consumed by downstream components.
+func ToContextChunks(results ...Result) []retrieval.Chunk {
+	var out []retrieval.Chunk
+	for _, r := range results {
+		out = append(out, retrieval.Chunk{
+			Text:   r.Content,
+			Source: r.FilePath,
+			Score:  r.Score,
+		})
 	}
 	return out
 }
