@@ -1,7 +1,7 @@
 package vector
 
 import (
-	"ai-cli/internal/retrieval"
+	"coolaid/internal/retrieval"
 	"cmp"
 	"container/heap"
 	"database/sql"

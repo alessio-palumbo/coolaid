@@ -1,7 +1,7 @@
 package web
 
 import (
-	"ai-cli/internal/retrieval"
+	"coolaid/internal/retrieval"
 	"testing"
 )
 

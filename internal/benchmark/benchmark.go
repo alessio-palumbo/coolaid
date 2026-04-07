@@ -1,7 +1,7 @@
 package benchmark
 
 import (
-	"ai-cli/internal/vector"
+	"coolaid/internal/vector"
 	"context"
 	"fmt"
 	"log"

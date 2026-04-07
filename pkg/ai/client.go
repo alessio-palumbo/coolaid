@@ -1,8 +1,8 @@
 package ai
 
 import (
-	"ai-cli/internal/llm"
-	"ai-cli/internal/vector"
+	"coolaid/internal/llm"
+	"coolaid/internal/vector"
 	"context"
 	"errors"
 	"io"

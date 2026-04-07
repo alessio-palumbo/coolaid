@@ -1,7 +1,7 @@
 package indexer
 
 import (
-	"ai-cli/internal/query"
+	"coolaid/internal/query"
 	"strings"
 )
 

@@ -1,8 +1,8 @@
 package indexer
 
 import (
-	"ai-cli/internal/llm"
-	"ai-cli/internal/vector"
+	"coolaid/internal/llm"
+	"coolaid/internal/vector"
 	"log/slog"
 	"os"
 )

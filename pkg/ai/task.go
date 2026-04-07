@@ -1,11 +1,11 @@
 package ai
 
 import (
-	"ai-cli/internal/indexer"
-	"ai-cli/internal/prompts"
-	"ai-cli/internal/query"
-	"ai-cli/internal/vector"
-	"ai-cli/internal/web"
+	"coolaid/internal/indexer"
+	"coolaid/internal/prompts"
+	"coolaid/internal/query"
+	"coolaid/internal/vector"
+	"coolaid/internal/web"
 	"cmp"
 	"context"
 	"errors"

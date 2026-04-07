@@ -1,7 +1,7 @@
 package prompts
 
 import (
-	"ai-cli/internal/retrieval"
+	"coolaid/internal/retrieval"
 	"bytes"
 	"embed"
 	"fmt"

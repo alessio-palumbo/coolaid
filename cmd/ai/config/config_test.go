@@ -1,7 +1,7 @@
 package config
 
 import (
-	"ai-cli/pkg/ai"
+	"coolaid/pkg/ai"
 	"os"
 	"path/filepath"
 	"strings"

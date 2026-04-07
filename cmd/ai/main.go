@@ -1,10 +1,10 @@
 package main
 
 import (
-	"ai-cli/cmd/ai/command"
-	"ai-cli/cmd/ai/config"
-	"ai-cli/pkg/ai"
-	"ai-cli/pkg/spinner"
+	"coolaid/cmd/ai/command"
+	"coolaid/cmd/ai/config"
+	"coolaid/pkg/ai"
+	"coolaid/pkg/spinner"
 	"log"
 	"os"
 

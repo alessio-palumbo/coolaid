@@ -1,7 +1,7 @@
 package command
 
 import (
-	"ai-cli/internal/vector"
+	"coolaid/internal/vector"
 	"errors"
 )
 

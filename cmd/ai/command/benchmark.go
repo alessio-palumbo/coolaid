@@ -1,8 +1,8 @@
 package command
 
 import (
-	"ai-cli/internal/benchmark"
-	"ai-cli/pkg/ai"
+	"coolaid/internal/benchmark"
+	"coolaid/pkg/ai"
 
 	"github.com/urfave/cli/v2"
 )

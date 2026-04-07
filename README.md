@@ -1,6 +1,6 @@
-# ai-cli
+# coolaid
 
-`ai-cli` is a local AI-powered CLI tool for exploring and querying codebases. It supports semantic search, code explanations, summarization, and general LLM queries — all running locally with your own embeddings and vector store.
+`coolaid` is a local AI-powered CLI tool for exploring and querying codebases. It supports semantic search, code explanations, summarization, and general LLM queries — all running locally with your own embeddings and vector store.
 
 ---
 
@@ -23,9 +23,9 @@
 ## Installation
 
 ```bash
-git clone https://github.com/yourusername/ai-cli.git
-cd ai-cli
-go build -o ai
+git clone https://github.com/alessio-palumbo/coolaid.git
+cd coolaid
+go build -o ai ./cmd/main
 ```
 
 ---

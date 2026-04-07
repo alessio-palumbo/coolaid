@@ -4,7 +4,7 @@
 package config
 
 import (
-	"ai-cli/pkg/ai"
+	"coolaid/pkg/ai"
 	"crypto/sha1"
 	"encoding/hex"
 	"fmt"

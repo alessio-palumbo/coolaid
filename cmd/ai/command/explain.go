@@ -1,8 +1,8 @@
 package command
 
 import (
-	"ai-cli/pkg/ai"
-	"ai-cli/pkg/spinner"
+	"coolaid/pkg/ai"
+	"coolaid/pkg/spinner"
 	"fmt"
 
 	"github.com/urfave/cli/v2"

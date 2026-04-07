@@ -1,7 +1,7 @@
 package command
 
 import (
-	"ai-cli/pkg/ai"
+	"coolaid/pkg/ai"
 	"fmt"
 
 	"github.com/urfave/cli/v2"
