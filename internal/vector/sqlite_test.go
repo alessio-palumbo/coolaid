@@ -234,6 +234,7 @@ func newTestStore(t *testing.T) (*Store, string) {
 	tmpDir := t.TempDir()
 	store, err := NewStore("", tmpDir, "", "")
 	assert.NoError(t, err)
+	assert.NoError(t, store.ResetIndex())
 
 	t.Cleanup(func() { store.Close() })
 	return store, tmpDir

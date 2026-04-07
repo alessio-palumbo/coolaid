@@ -53,6 +53,7 @@ func TestNewStore(t *testing.T) {
 	store, err := NewStore(pRoot, tmpDir, "my_db", "hash")
 	assert.NoError(t, err)
 	defer store.Close()
+	assert.NoError(t, store.ResetIndex())
 
 	assert.NotNil(t, store)
 	assert.NotNil(t, store.db)

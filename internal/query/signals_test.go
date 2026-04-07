@@ -15,7 +15,7 @@ func TestExtractSignals(t *testing.T) {
         	}
         	`
 
-		out := ExtractSignals("main.go", []byte(src))
+		out := ExtractSignals("main.go", []byte(src), false)
 		if !strings.Contains(out, "LoadConfig") {
 			t.Errorf("expected Go extraction, got:\n%s", out)
 		}
@@ -28,7 +28,7 @@ func TestExtractSignals(t *testing.T) {
 		}
         	`
 
-		out := ExtractSignals("file.js", []byte(src))
+		out := ExtractSignals("file.js", []byte(src), false)
 		if !strings.Contains(out, "parseJSON") {
 			t.Errorf("expected text extraction, got:\n%s", out)
 		}
@@ -47,7 +47,7 @@ func Test_extractGoSignals(t *testing.T) {
 		}
 		`
 
-		out := extractGoSignals([]byte(src))
+		out := extractGoSignals([]byte(src), false)
 		expected := []string{"LoadConfig", "ConnectDB", "RunServer"}
 		for _, e := range expected {
 			if !strings.Contains(out, e) {
@@ -66,7 +66,7 @@ func Test_extractGoSignals(t *testing.T) {
 		}
 		`
 
-		out := extractGoSignals([]byte(src))
+		out := extractGoSignals([]byte(src), false)
 		expected := []string{"DoRequest", "Info"}
 		for _, e := range expected {
 			if !strings.Contains(out, e) {
@@ -90,7 +90,7 @@ func Test_extractGoSignals(t *testing.T) {
 		}
 		`
 
-		out := extractGoSignals([]byte(src))
+		out := extractGoSignals([]byte(src), false)
 		expected := []string{"client", "logger", "DoRequest", "Info"}
 		for _, e := range expected {
 			if !strings.Contains(out, e) {
@@ -110,7 +110,7 @@ func Test_extractGoSignals(t *testing.T) {
 		}
 		`
 
-		out := extractGoSignals([]byte(src))
+		out := extractGoSignals([]byte(src), false)
 		count := strings.Count(out, "DoRequest")
 		if count != 1 {
 			t.Errorf("expected 'Dorequest' once, got %d occurrences:\n%s", count, out)

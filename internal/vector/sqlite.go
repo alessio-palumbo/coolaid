@@ -47,8 +47,8 @@ func (s *Store) ResetIndex() (err error) {
 	return tx.Commit()
 }
 
-// Saves writes the Store embeddings and summary to the DB.
-func (s *Store) Save() error {
+// Save writes the Store embeddings and summary to the DB.
+func (s *Store) Save() (err error) {
 	tx, err := s.db.Begin()
 	if err != nil {
 		return err
