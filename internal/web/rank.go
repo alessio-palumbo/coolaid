@@ -4,7 +4,6 @@ import (
 	"ai-cli/internal/retrieval"
 	"cmp"
 	"slices"
-	"strings"
 )
 
 // selectTop selects up to max chunks prioritizing both relevance and source diversity.
@@ -43,6 +42,11 @@ func selectTop(query string, chunks []retrieval.Chunk, max int) []retrieval.Chun
 		result = append(result, r)
 	}
 
+	// final sort
+	slices.SortFunc(result, func(i, j retrieval.Chunk) int {
+		return cmp.Compare(j.Score, i.Score)
+	})
+
 	// trim if needed
 	if len(result) > max {
 		result = result[:max]
@@ -55,9 +59,11 @@ func selectTop(query string, chunks []retrieval.Chunk, max int) []retrieval.Chun
 // to each chunk. Chunks within each source are sorted in descending order
 // of score, so the most relevant chunk per source comes first.
 func rankChunks(query string, chunks []retrieval.Chunk) map[string][]retrieval.Chunk {
+	bm25 := retrieval.NewBM25(chunks)
+	bm25.ScoreAndNormalize(query, chunks)
+
 	grouped := make(map[string][]retrieval.Chunk)
 	for _, c := range chunks {
-		c.Score = scoreChunk(query, c)
 		grouped[c.Source] = append(grouped[c.Source], c)
 	}
 
@@ -67,25 +73,4 @@ func rankChunks(query string, chunks []retrieval.Chunk) map[string][]retrieval.C
 		})
 	}
 	return grouped
-}
-
-// scoreChunk assigns a relevance score in [0.0, 1.0] to a chunk based on
-// simple keyword matching against the query. The score represents the
-// fraction of query terms present in the chunk text.
-func scoreChunk(query string, c retrieval.Chunk) float64 {
-	qWords := strings.Fields(strings.ToLower(query))
-	if len(qWords) == 0 {
-		return 0
-	}
-
-	text := strings.ToLower(c.Text)
-	matches := 0
-	for _, w := range qWords {
-		if strings.Contains(text, w) {
-			matches++
-		}
-	}
-	return float64(matches) / float64(len(qWords))
-	// favors richer chunks slightly
-	// return float64(matches) / float64(len(qWords)) * math.Min(1, float64(len(c.Text))/2000)
 }
