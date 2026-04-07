@@ -1,10 +1,10 @@
 package ai
 
 import (
+	"context"
 	"coolaid/internal/llm"
 	"coolaid/internal/prompts"
 	"coolaid/internal/vector"
-	"context"
 )
 
 // ChatSession represents a stateful conversation with the LLM.
@@ -15,7 +15,7 @@ type ChatSession struct {
 	client  *Client
 	history []llm.Message
 
-	cfg *queryConfig
+	cfg *taskConfig
 }
 
 // NewChatSession creates a new stateful chat session.

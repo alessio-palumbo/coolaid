@@ -22,18 +22,18 @@ const (
 //
 // It follows the functional options pattern and allows callers to customize
 // retrieval and prompt behavior.
-type TaskOption func(*queryConfig)
+type TaskOption func(*taskConfig)
 
 // WithTopK overrides the number of results retrieved during semantic search.
 func WithTopK(k int) TaskOption {
-	return func(c *queryConfig) {
+	return func(c *taskConfig) {
 		c.retrieval.k = k
 	}
 }
 
 // WithMMR enables or disables Max Marginal Relevance for retrieval.
 func WithMMR(enabled bool) TaskOption {
-	return func(c *queryConfig) {
+	return func(c *taskConfig) {
 		c.retrieval.useMMR = enabled
 	}
 }
@@ -42,14 +42,14 @@ func WithMMR(enabled bool) TaskOption {
 //
 // This overrides both k and MMR settings based on the selected mode.
 func WithRetrievalMode(mode RetrievalMode) TaskOption {
-	return func(c *queryConfig) {
+	return func(c *taskConfig) {
 		c.retrieval = defaultRetrievalOptions(mode)
 	}
 }
 
 // WithSystemPrompt overrides the default system prompt used for generation.
 func WithSystemPrompt(s string) TaskOption {
-	return func(c *queryConfig) {
+	return func(c *taskConfig) {
 		c.prompt.systemOverride = s
 	}
 }
@@ -58,13 +58,13 @@ func WithSystemPrompt(s string) TaskOption {
 //
 // The exact format depends on the prompt template and LLM capabilities.
 func WithStructuredOutput() TaskOption {
-	return func(c *queryConfig) {
+	return func(c *taskConfig) {
 		c.prompt.structuredOutput = true
 	}
 }
 
-// queryConfig holds internal configuration derived from TaskOptions.
-type queryConfig struct {
+// taskConfig holds internal configuration derived from TaskOptions.
+type taskConfig struct {
 	retrieval retrievalOptions
 	prompt    promptTaskOptions
 }
@@ -102,11 +102,11 @@ func defaultRetrievalOptions(mode RetrievalMode) retrievalOptions {
 }
 
 // parseTaskOptions applies the provided TaskOptions and returns
-// a fully initialized queryConfig.
+// a fully initialized taskConfig.
 //
 // By default, RetrievalBalanced mode is used unless overridden.
-func parseTaskOptions(opts ...TaskOption) *queryConfig {
-	cfg := queryConfig{
+func parseTaskOptions(opts ...TaskOption) *taskConfig {
+	cfg := taskConfig{
 		retrieval: defaultRetrievalOptions(RetrievalBalanced),
 	}
 

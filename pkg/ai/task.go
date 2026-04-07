@@ -420,7 +420,7 @@ func (c *Client) SemanticSearch(ctx context.Context, prompt string, k int, useMM
 //
 // Note: This method currently performs semantic-only retrieval. It may be extended
 // in the future to leverage hybrid (symbol + semantic) search for improved precision.
-func (c *Client) retrieveFromTarget(ctx context.Context, target Target, taskCfg *queryConfig) ([]vector.Result, []byte, error) {
+func (c *Client) retrieveFromTarget(ctx context.Context, target Target, taskCfg *taskConfig) ([]vector.Result, []byte, error) {
 	if err := target.validate(); err != nil {
 		return nil, nil, err
 	}
