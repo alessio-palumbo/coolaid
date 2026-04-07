@@ -230,10 +230,7 @@ func normalizeModel(name string) string {
 func toChatMessages(msgs []Message) []chatMessage {
 	out := make([]chatMessage, len(msgs))
 	for i, m := range msgs {
-		out[i] = chatMessage{
-			Role:    m.Role,
-			Content: m.Content,
-		}
+		out[i] = chatMessage(m)
 	}
 	return out
 }

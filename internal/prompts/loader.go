@@ -1,8 +1,8 @@
 package prompts
 
 import (
-	"coolaid/internal/retrieval"
 	"bytes"
+	"coolaid/internal/retrieval"
 	"embed"
 	"fmt"
 	"text/template"
@@ -46,10 +46,6 @@ var promptFS embed.FS
 
 // Precompiled templates
 var templates = make(map[string]*template.Template)
-
-var funcMap = template.FuncMap{
-	"add": func(a, b int) int { return a + b },
-}
 
 func init() {
 	var funcMap = template.FuncMap{

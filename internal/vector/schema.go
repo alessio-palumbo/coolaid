@@ -42,8 +42,4 @@ const (
 		updated_at TEXT
 	    );
 	`
-
-	dropSummarySchema = `
-	    DROP TABLE IF EXISTS summary;
-	`
 )
