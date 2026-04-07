@@ -1,9 +1,9 @@
 package vector
 
 import (
-	"coolaid/internal/retrieval"
 	"cmp"
 	"container/heap"
+	"coolaid/internal/retrieval"
 	"database/sql"
 	"fmt"
 	"math"
@@ -151,6 +151,9 @@ func (s *Store) AddSummary(summary string) {
 //
 // This helps avoid returning many similar chunks (e.g. from the same file).
 func (s *Store) Search(query []float64, k int, useMMR bool) ([]Result, error) {
+	if k <= 0 {
+		return nil, fmt.Errorf("invalid value for k: [%d]", k)
+	}
 	if err := s.EnsureLoaded(); err != nil {
 		return nil, err
 	}

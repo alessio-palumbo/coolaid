@@ -1,13 +1,13 @@
 package ai
 
 import (
+	"cmp"
+	"context"
 	"coolaid/internal/indexer"
 	"coolaid/internal/prompts"
 	"coolaid/internal/query"
 	"coolaid/internal/vector"
 	"coolaid/internal/web"
-	"cmp"
-	"context"
 	"errors"
 	"fmt"
 	"go/ast"
@@ -371,11 +371,10 @@ func (c *Client) DoSearch(ctx context.Context, prompt string, k int, useMMR bool
 		if err != nil {
 			return nil, err
 		}
-
 		symbolResults = append(symbolResults, results...)
 	}
 
-	if len(symbolResults) > 0 && (preferSymbol || len(symbolResults) == k) {
+	if len(symbolResults) > 0 && (preferSymbol || len(symbolResults) >= k) {
 		return symbolResults, nil
 	}
 
