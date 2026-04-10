@@ -22,11 +22,124 @@
 
 ## Installation
 
+### Prerequisites
+
+`coolaid` runs fully locally but requires Ollama to be installed and running.
+
+1. Install Ollama: https://ollama.com
+2. Pull the required models:
+
+```bash
+ollama pull llama3.1
+ollama pull nomic-embed-text
+```
+
+- LLM model (default): llama3.1
+- Embedding model (default): nomic-embed-text
+
+You can change these later via configuration if needed.
+
+### Download Prebuild Binary (Recommended)
+
+Download the latest release for your platform from GitHub:
+👉 https://github.com/alessio-palumbo/coolaid/releases
+
+Then make it executable (Linux/macOS):
+
+```bash
+chmod +x ai
+./ai --help
+```
+
+### Build from source
+
 ```bash
 git clone https://github.com/alessio-palumbo/coolaid.git
 cd coolaid
 go build -o ai ./cmd/main
 ```
+
+### Verify installation
+
+```bash
+./ai ask "What is a mutex in Go?"
+```
+
+---
+
+## Getting Started
+
+Before using most commands, you need to index your codebase.
+
+```bash
+./ai index
+```
+
+By default, `coolaid` will:
+
+- Detect the root of the current Git repository and index it
+- Fallback to the current directory if no Git repo is found
+
+This process:
+
+- Chunks your code into meaningful pieces
+- Generates embeddings for each chunk
+- Stores them in a local vector database
+
+> Note: All commands except ask require an index to exist.
+
+---
+
+## Storage & Configuration
+
+### Configuration
+
+On first run, coolaid will automatically create a configuration file:
+
+```bash
+~/.ai/config.toml
+```
+
+This file contains:
+
+- LLM model (default: llama3.1)
+- Embedding model (default: nomic-embed-text)
+- Indexing settings (included extensions and ignore patterns)
+
+You can edit this file to customize how coolaid behaves.
+
+### Vector Store (Indexes)
+
+Indexed data is stored locally in:
+
+```bash
+~/.ai/indexes/
+```
+
+Each project gets its own SQLite database, automatically named based on:
+
+- The project root directory
+- A short hash (to avoid collisions)
+
+This allows multiple projects to be indexed independently without conflicts.
+
+### When to Rebuild the Index
+
+You should rerun:
+
+```bash
+./ai index
+```
+
+whenever:
+
+- Files in your codebase change significantly
+- You update include_extensions
+- You update ignore_patterns
+- You change the embedding model
+
+> Note: The index is not automatically kept in sync with your codebase.
+> If a breaking change or configuration mismatch is detected, coolaid will return an error prompting you to rebuild the index.
 
 ---
 
