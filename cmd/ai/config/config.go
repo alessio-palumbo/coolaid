@@ -22,7 +22,7 @@ const (
 	storeDirName   = "indexes"
 	configFileName = "config.toml"
 
-	defaultLLMModel       = "llama3"
+	defaultLLMModel       = "llama3.1"
 	defaultEmbeddingModel = "nomic-embed-text"
 	defaultTemperature    = 0.2
 )

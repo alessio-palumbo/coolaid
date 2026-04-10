@@ -23,7 +23,7 @@ func TestLoadOrCreate(t *testing.T) {
 			},
 			wantToml: strings.TrimSpace(`
 [llm]
-model = 'llama3'
+model = 'llama3.1'
 embedding_model = 'nomic-embed-text'
 temperature = 0.2
 
