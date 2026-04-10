@@ -8,88 +8,198 @@ on:
 permissions:
   contents: write
 
-jobs:
-  build:
-    runs-on: ubuntu-latest
+env:
+  BIN_NAME: coolaid
 
+jobs:
+  build-linux:
+    runs-on: ubuntu-latest
     strategy:
       matrix:
-        goos: [linux, windows, darwin]
-        goarch: [amd64, arm64]
-        exclude:
-          - goos: windows
-            goarch: arm64
-    env:
-      CGO_ENABLED: 0
+        arch: [amd64]
 
     steps:
-      - name: Checkout coolaid
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Set up Go
-        uses: actions/setup-go@v5
+      - uses: actions/setup-go@v5
         with:
-          go-version: '1.25'
+          go-version: "1.25"
 
-      - name: Set build variables
-        id: vars
+      - name: Cache Go modules and build cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/go/pkg/mod
+            ~/.cache/go-build
+          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-
+
+      - name: Set shared build variables
         run: |
           echo "VERSION=$(git describe --tags --always || echo dev)" >> $GITHUB_ENV
           echo "COMMIT=$(git rev-parse --short HEAD)" >> $GITHUB_ENV
           echo "BUILD_TIME=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> $GITHUB_ENV
 
-      - name: Build and package binary
+      - name: Build Linux
         run: |
           mkdir -p dist
-          BIN_NAME="coolaid"
-          if [ "${{ matrix.goos }}" == "windows" ]; then BIN_NAME="$BIN_NAME.exe"; fi
+          FOLDER="coolaid-linux-${{ matrix.arch }}"
+          OUT="dist/$FOLDER"
 
-          FOLDER_NAME="coolaid-${{ matrix.goos }}-${{ matrix.goarch }}"
-          OUTPUT_DIR="dist/$FOLDER_NAME"
+          mkdir -p "$OUT"
 
-          mkdir -p "$OUTPUT_DIR"
-          echo "Building for ${{ matrix.goos }} ${{ matrix.goarch }} in "$OUTPUT_DIR/$BIN_NAME""
-
-          GOOS=${{ matrix.goos }} GOARCH=${{ matrix.goarch }} \
-          go build -o "$OUTPUT_DIR/$BIN_NAME" \
+          CGO_ENABLED=1 GOOS=linux GOARCH=${{ matrix.arch }} \
+          go build -o "$OUT/$BIN_NAME" \
             -ldflags "-s -w \
-              -X github.com/alessio-palumbo/coolaid/internal/version.Version=$VERSION \
-              -X github.com/alessio-palumbo/coolaid/internal/version.Commit=$COMMIT \
-              -X github.com/alessio-palumbo/coolaid/internal/version.BuildTime=$BUILD_TIME" \
+            -X github.com/alessio-palumbo/coolaid/internal/version.Version=$VERSION \
+            -X github.com/alessio-palumbo/coolaid/internal/version.Commit=$COMMIT \
+            -X github.com/alessio-palumbo/coolaid/internal/version.BuildTime=$BUILD_TIME" \
             ./cmd/ai
 
-          echo "$VERSION" > "$OUTPUT_DIR/VERSION"
-          cp README.md LICENSE "$OUTPUT_DIR/"
+          cp README.md LICENSE "$OUT/"
+          echo "$VERSION" > "$OUT/VERSION"
 
           cd dist
-          zip -r "$FOLDER_NAME.zip" "$FOLDER_NAME"
-          cd ..
+          zip -r "$FOLDER.zip" "$FOLDER"
 
-      - name: Upload zip artifact
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         with:
-          name: coolaid-${{ matrix.goos }}-${{ matrix.goarch }}
+          name: coolaid-linux-${{ matrix.arch }}
           path: dist/*.zip
 
+
+  build-darwin:
+    runs-on: macos-latest
+    strategy:
+      matrix:
+        arch: [amd64, arm64]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+
+      - name: Cache Go modules and build cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/go/pkg/mod
+            ~/.cache/go-build
+          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-
+
+      - name: Set shared build variables
+        run: |
+          echo "VERSION=$(git describe --tags --always || echo dev)" >> $GITHUB_ENV
+          echo "COMMIT=$(git rev-parse --short HEAD)" >> $GITHUB_ENV
+          echo "BUILD_TIME=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> $GITHUB_ENV
+
+      - name: Build macOS
+        run: |
+          mkdir -p dist
+          FOLDER="coolaid-darwin-${{ matrix.arch }}"
+          OUT="dist/$FOLDER"
+
+          mkdir -p "$OUT"
+
+          CGO_ENABLED=1 GOOS=darwin GOARCH=${{ matrix.arch }} \
+          go build -o "$OUT/$BIN_NAME" \
+            -ldflags "-s -w \
+            -X github.com/alessio-palumbo/coolaid/internal/version.Version=$VERSION \
+            -X github.com/alessio-palumbo/coolaid/internal/version.Commit=$COMMIT \
+            -X github.com/alessio-palumbo/coolaid/internal/version.BuildTime=$BUILD_TIME" \
+            ./cmd/ai
+
+          cp README.md LICENSE "$OUT/"
+          echo "$VERSION" > "$OUT/VERSION"
+
+          cd dist
+          ditto -c -k --sequesterRsrc "$FOLDER" "$FOLDER.zip"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: coolaid-darwin-${{ matrix.arch }}
+          path: dist/*.zip
+
+
+  build-windows:
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+
+      - name: Cache Go modules and build cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~\go\pkg\mod
+            ~\AppData\Local\go-build
+          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-
+
+      - name: Set shared build variables
+        shell: bash
+        run: |
+          echo "VERSION=$(git describe --tags --always || echo dev)" >> $GITHUB_ENV
+          echo "COMMIT=$(git rev-parse --short HEAD)" >> $GITHUB_ENV
+          echo "BUILD_TIME=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> $GITHUB_ENV
+
+      - name: Build Windows
+        shell: pwsh
+        run: |
+          $OutDir = "dist\coolaid-windows-amd64"
+          New-Item -ItemType Directory -Force -Path $OutDir | Out-Null
+
+          go build -o ".\coolaid.exe" `
+            -ldflags "-s -w `
+            -X github.com/alessio-palumbo/coolaid/internal/version.Version=$env:VERSION `
+            -X github.com/alessio-palumbo/coolaid/internal/version.Commit=$env:COMMIT `
+            -X github.com/alessio-palumbo/coolaid/internal/version.BuildTime=$env:BUILD_TIME" `
+            .\cmd\ai
+
+          Move-Item -Force ".\coolaid.exe" $OutDir
+          Copy-Item README.md, LICENSE $OutDir
+
+          Set-Content "$OutDir\VERSION" $env:VERSION
+
+          $Zip = "dist\coolaid-windows-amd64.zip"
+          if (Test-Path $Zip) { Remove-Item $Zip }
+
+          Compress-Archive -Path "$OutDir\*" -DestinationPath $Zip
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: coolaid-windows-amd64
+          path: dist/*
+
+
   release:
-    needs: build
+    needs: [build-linux, build-darwin, build-windows]
     runs-on: ubuntu-latest
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Download all zipped artifacts
+      - name: Download artifacts
         uses: actions/download-artifact@v4
         with:
           path: dist
           merge-multiple: true
 
-      - name: Create GitHub Release and Upload Assets
+      - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.ref_name }}
           name: Release ${{ github.ref_name }}
-          files: dist/*.zip
-
+          files: dist/**/*.zip
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
