@@ -177,7 +177,13 @@ whenever:
 ./ai index ./my-repo
 ```
 
-### Search for code snippets (Symbol match + semantic search)
+### Start a chat session (w RAG)
+
+```bash
+./ai chat
+```
+
+### Search for code snippets (w RAG)
 
 ```bash
 ./ai search "vector store embedding normalization"
@@ -185,7 +191,7 @@ whenever:
 
 - -k specifies the number of top chunks to retrieve (default: 5)
 
-### Query the codebase using the LLM
+### Query the codebase using the LLM (w RAG)
 
 ```bash
 ./ai query "How is the vector store implemented?" -mode balanced
@@ -193,7 +199,7 @@ whenever:
 
 - -mode specifies the default mode use for RAG: fast, balanced or deep (use MMR)
 
-### Explain code
+### Explain code (w RAG)
 
 ```bash
 ./ai explain path/to/file.go [-fn functionName]
@@ -201,7 +207,7 @@ whenever:
 
 - -fn optional, targets functionName only
 
-### Generate test
+### Generate test (w RAG)
 
 ```bash
 ./ai test path/to/file.go [-fn functionName]
