@@ -36,6 +36,7 @@ func main() {
 			command.QueryCommand(client, sw),
 			command.ChatCommand(client, sw),
 			command.TestCommand(client, sw),
+			command.EditCommand(client, sw),
 			command.BenchmarkCommand(client),
 		},
 	}

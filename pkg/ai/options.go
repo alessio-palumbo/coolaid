@@ -7,6 +7,10 @@ package ai
 type RetrievalMode string
 
 const (
+	// RetrievalNone disables retrieval entirely.
+	// The model operates only on the provided prompt and explicit context (e.g. Target.Body).
+	RetrievalNone RetrievalMode = "none"
+
 	// RetrievalFast prioritizes speed with fewer results and no diversification.
 	RetrievalFast RetrievalMode = "fast"
 
@@ -92,6 +96,8 @@ type promptTaskOptions struct {
 // defaultRetrievalOptions returns default retrieval settings for a given mode.
 func defaultRetrievalOptions(mode RetrievalMode) retrievalOptions {
 	switch mode {
+	case RetrievalNone:
+		return retrievalOptions{k: 0, useMMR: false}
 	case RetrievalDeep:
 		return retrievalOptions{k: 12, useMMR: true}
 	case RetrievalBalanced:

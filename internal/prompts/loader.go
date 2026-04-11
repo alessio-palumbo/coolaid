@@ -18,6 +18,7 @@ const (
 	TemplateTestGo      promptTemplate = "test-go.tmpl"
 	TemplateTestGeneric promptTemplate = "test-generic.tmpl"
 	TemplateAskWeb      promptTemplate = "ask-web.tmpl"
+	TemplateEdit        promptTemplate = "edit.tmpl"
 )
 
 type targetType string
@@ -63,6 +64,7 @@ func init() {
 		string(TemplateTestGo),
 		string(TemplateTestGeneric),
 		string(TemplateAskWeb),
+		string(TemplateEdit),
 	}
 
 	for _, file := range files {
@@ -79,11 +81,12 @@ type Config struct {
 	Target         Target
 }
 
-func (c *Config) WithTarget(file, fn string) *Config {
+func (c *Config) WithTarget(file, fn, body string) *Config {
 	if fn != "" {
 		c.Target = Target{
 			Name: fn,
 			Type: TargetFunction,
+			Body: body,
 		}
 		return c
 	}
@@ -91,6 +94,7 @@ func (c *Config) WithTarget(file, fn string) *Config {
 	c.Target = Target{
 		Name: file,
 		Type: TargetFile,
+		Body: body,
 	}
 	return c
 }
@@ -98,6 +102,7 @@ func (c *Config) WithTarget(file, fn string) *Config {
 type Target struct {
 	Type targetType
 	Name string
+	Body string
 }
 
 type templateData struct {

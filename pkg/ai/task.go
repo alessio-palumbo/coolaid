@@ -286,9 +286,6 @@ func (c *Client) Explain(ctx context.Context, target Target, opts ...TaskOption)
 	if err != nil {
 		return TaskResult{}, err
 	}
-	if len(results) == 0 {
-		return TaskResult{Status: TaskStatus{NoResults: true}}, nil
-	}
 
 	// Exclude any chunks matching the file to avoid wasting tokens.
 	for i, r := range results {
@@ -303,8 +300,8 @@ func (c *Client) Explain(ctx context.Context, target Target, opts ...TaskOption)
 		Structured:     taskCfg.prompt.structuredOutput,
 	}
 	prompt, err := prompts.Render(
-		pConfig.WithTarget(target.File, target.Function),
-		extractTarget(data, target.Function), results...,
+		pConfig.WithTarget(target.File, target.Function, extractTarget(data, target.Function)),
+		"", results...,
 	)
 	if err != nil {
 		return TaskResult{}, err
@@ -324,9 +321,6 @@ func (c *Client) GenerateTests(ctx context.Context, target Target, opts ...TaskO
 	if err != nil {
 		return TaskResult{}, err
 	}
-	if len(results) == 0 {
-		return TaskResult{Status: TaskStatus{NoResults: true}}, nil
-	}
 
 	pConfig := &prompts.Config{
 		SystemOverride: taskCfg.prompt.systemOverride,
@@ -339,8 +333,42 @@ func (c *Client) GenerateTests(ctx context.Context, target Target, opts ...TaskO
 	}
 
 	prompt, err := prompts.Render(
-		pConfig.WithTarget(target.File, target.Function),
-		extractTarget(data, target.Function), results...)
+		pConfig.WithTarget(target.File, target.Function, extractTarget(data, target.Function)),
+		"", results...)
+	if err != nil {
+		return TaskResult{}, err
+	}
+
+	return TaskResult{}, c.llm.GenerateStream(prompt, c.writer)
+}
+
+// Edit modifies code based on a user-provided instruction.
+//
+// It loads the target source file, optionally narrows the context to a specific
+// function, and combines it with the user’s prompt to guide an LLM-based edit.
+//
+// The operation may include additional contextual retrieval (if enabled via opts)
+// to improve multi-file or dependency-aware changes.
+//
+// This is a general-purpose code transformation primitive used for fixes,
+// refactors, and targeted rewrites.
+func (c *Client) Edit(ctx context.Context, target Target, prompt string, opts ...TaskOption) (TaskResult, error) {
+	taskCfg := parseTaskOptions(opts...)
+
+	results, data, err := c.retrieveFromTarget(ctx, target, taskCfg)
+	if err != nil {
+		return TaskResult{}, err
+	}
+
+	pConfig := &prompts.Config{
+		Template:       prompts.TemplateEdit,
+		SystemOverride: taskCfg.prompt.systemOverride,
+		Structured:     taskCfg.prompt.structuredOutput,
+	}
+	prompt, err = prompts.Render(
+		pConfig.WithTarget(target.File, target.Function, extractTarget(data, target.Function)),
+		prompt, results...,
+	)
 	if err != nil {
 		return TaskResult{}, err
 	}
@@ -405,21 +433,23 @@ func (c *Client) SemanticSearch(ctx context.Context, prompt string, k int, useMM
 	return c.store.Search(queryVec, k, useMMR)
 }
 
-// retrieveFromTarget prepares retrieval context for a given Target.
+// retrieveFromTarget builds retrieval context for a given Target.
 //
-// It validates the target, reads the file content, and extracts semantic signals
-// (e.g. identifiers, comments, structure) from the source. These signals are then
-// used to perform a semantic search against the indexed codebase to find relevant
-// dependency chunks.
+// It validates the target, reads the file content, and optionally performs
+// semantic retrieval over the indexed codebase using extracted signals
+// (e.g. identifiers, structure, comments).
 //
-// The returned results represent supporting context (e.g. related functions,
-// types, or usages) that can be passed to the LLM alongside the target code.
+// The returned chunks represent optional supporting context (related functions,
+// types, or usages) that may improve LLM reasoning when combined with the target.
 //
-// The raw file content is also returned so callers can extract the specific
-// function or file segment to include in the final prompt.
+// The raw file content is always returned so callers can extract the specific
+// function or file segment for the prompt.
 //
-// Note: This method currently performs semantic-only retrieval. It may be extended
-// in the future to leverage hybrid (symbol + semantic) search for improved precision.
+// Retrieval is disabled when k < 1 (e.g. RetrievalNone), in which case only
+// the file content is returned.
+//
+// Note: This is a best-effort enrichment step. Failure or empty results should
+// not prevent LLM execution.
 func (c *Client) retrieveFromTarget(ctx context.Context, target Target, taskCfg *taskConfig) ([]retrieval.Chunk, []byte, error) {
 	if err := target.validate(); err != nil {
 		return nil, nil, err
@@ -428,6 +458,10 @@ func (c *Client) retrieveFromTarget(ctx context.Context, target Target, taskCfg 
 	data, err := os.ReadFile(target.File)
 	if err != nil {
 		return nil, nil, err
+	}
+
+	if taskCfg.retrieval.k < 1 {
+		return nil, data, nil
 	}
 
 	// Find dependencies chunks to pass as dependencies to LLM.

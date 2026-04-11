@@ -199,7 +199,7 @@ whenever:
 
 - -mode specifies the default mode use for RAG: fast, balanced or deep (use MMR)
 
-### Explain code (w RAG)
+### Explain file or function code (w RAG)
 
 ```bash
 ./ai explain path/to/file.go [-fn functionName]
@@ -207,13 +207,22 @@ whenever:
 
 - -fn optional, targets functionName only
 
-### Generate test (w RAG)
+### Generate test for file or function (w RAG)
 
 ```bash
 ./ai test path/to/file.go [-fn functionName]
 ```
 
 - -fn optional, targets functionName only
+
+### Edit file or function (optional RAG)
+
+```bash
+./ai edit path/to/file.go [-fn functionName]
+```
+
+- -fn optional, targets functionName only
+- -rag optional, set to true to use RAG for extra context
 
 ---
 

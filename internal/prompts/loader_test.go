@@ -24,7 +24,7 @@ func TestRender(t *testing.T) {
 			cfg: (&Config{
 				Template:   TemplateExplain,
 				Structured: true,
-			}).WithTarget("main.go", ""),
+			}).WithTarget("main.go", "", ""),
 			prompt: "package main\n\nfunc main() {}",
 			context: []retrieval.Chunk{
 				{Text: "func helper() {}", Source: "/example/file.go", Score: 0.879},
@@ -35,7 +35,7 @@ func TestRender(t *testing.T) {
 		"explain_function": {
 			cfg: (&Config{
 				Template: TemplateExplain,
-			}).WithTarget("main.go", "main"),
+			}).WithTarget("main.go", "main", ""),
 			prompt: "func main() {}",
 			context: []retrieval.Chunk{
 				{Text: "func helper() {}", Source: "/example/file.go"},
@@ -81,6 +81,19 @@ func TestRender(t *testing.T) {
 			prompt:  "What does this do?",
 			context: nil,
 			golden:  "no_context.golden",
+		},
+		"with target": {
+			cfg: &Config{
+				Template: TemplateEdit,
+				Target: Target{
+					Type: TargetFunction,
+					Name: "Build",
+					Body: "func Build() error {}",
+				},
+			},
+			prompt:  "Make this function return a boolean",
+			context: nil,
+			golden:  "with_target.golden",
 		},
 	}
 

@@ -1,0 +1,20 @@
+{{- define "content" }}
+
+TARGET TYPE: {{.Target.Type}}
+{{- if eq .Target.Type "function" }}
+TARGET FUNCTION: {{.Target.Name}}
+{{- else if eq .Target.Type "file" }}
+TARGET FILE: {{.Target.Name}}
+{{- end }}
+
+Instructions:
+
+{{ if eq .Target.Type "file" -}}
+Fix the TARGET FILE in TARGET BODY according the USER REQUEST:
+
+{{ else if eq .Target.Type "function" -}}
+Fix the TARGET FUNCTION in TARGET BODY according the USER REQUEST:
+
+{{ end -}}
+
+{{- end }}

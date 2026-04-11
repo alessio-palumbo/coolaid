@@ -30,6 +30,13 @@ IMPORTANT:
 - Prioritize the USER REQUEST over retrieved context unless instructed otherwise
 {{ end }}
 
+{{- if .Target.Body }}
+TARGET BODY:
+```
+{{ .Target.Body }}
+```
+{{ end }}
+
 {{- if .ContextChunks }}
 CONTEXT:
 {{ range $i, $c := .ContextChunks }}
@@ -42,7 +49,8 @@ CONTEXT:
 {{ end }}
 {{- end }}
 
+{{- if .Prompt }}
 USER REQUEST:
 {{ .Prompt -}}
-
 {{ end }}
+{{- end }}
