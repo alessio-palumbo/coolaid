@@ -39,6 +39,26 @@ func C()
 	assert.Equal(t, want, JoinChunks(results...))
 }
 
+func TestTopK(t *testing.T) {
+	chunks := []Chunk{
+		{Score: 0.1},
+		{Score: 0.9},
+		{Score: 0.3},
+		{Score: 0.8},
+		{Score: 0.2},
+	}
+
+	out := TopK(chunks, 3)
+
+	expected := []float64{0.9, 0.8, 0.3}
+
+	for i := range expected {
+		if out[i].Score != expected[i] {
+			t.Fatalf("expected %.2f, got %.2f", expected[i], out[i].Score)
+		}
+	}
+}
+
 func TestMMR(t *testing.T) {
 	sim := func(a, b Chunk) float64 {
 		// simple deterministic similarity:

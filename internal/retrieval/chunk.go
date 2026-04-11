@@ -56,14 +56,10 @@ func TopK(chunks []Chunk, k int) []Chunk {
 		}
 	}
 
-	results := make([]Chunk, h.Len())
-	for i := len(results) - 1; i >= 0; i-- {
-		results[i] = heap.Pop(h).(Chunk)
-	}
-	return results
+	return h.DrainDesc()
 }
 
-// simFunc defines a similarity function between two chunks.
+// SimFunc defines a similarity function between two chunks.
 //
 // It is used by ranking algorithms (e.g. MMR) to estimate how similar
 // two chunks are, typically returning a value in the range [0, 1],
@@ -73,7 +69,7 @@ func TopK(chunks []Chunk, k int) []Chunk {
 //   - cosine similarity for embeddings
 //   - lexical similarity for text
 //   - or any custom metric
-type simFunc func(a, b Chunk) float64
+type SimFunc func(a, b Chunk) float64
 
 // MMR (Max Marginal Relevance) selects up to k chunks by balancing:
 //
@@ -86,7 +82,7 @@ type simFunc func(a, b Chunk) float64
 //
 // where:
 //   - λ ∈ [0,1] controls the tradeoff between relevance and diversity
-//   - simFunc provides pairwise similarity between chunks
+//   - SimFunc provides pairwise similarity between chunks
 //
 // Notes:
 //   - This is an equivalent, "positive-only" formulation of the classic MMR:
@@ -95,7 +91,7 @@ type simFunc func(a, b Chunk) float64
 //     version is easier to reason about (relevance + diversity).
 //   - On the first iteration, max_similarity_to_selected = 0, so selection
 //     reduces to choosing the highest-relevance chunk.
-func MMR(chunks []Chunk, k int, lambda float64, simF simFunc) []Chunk {
+func MMR(chunks []Chunk, k int, lambda float64, simF SimFunc) []Chunk {
 	selected := make([]Chunk, 0, k)
 	candidates := make([]Chunk, len(chunks))
 	copy(candidates, chunks)

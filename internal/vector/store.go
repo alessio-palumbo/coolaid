@@ -190,12 +190,7 @@ func (s *Store) topKFromItems(query []float64, k int) []retrieval.Chunk {
 		}
 	}
 
-	results := make([]retrieval.Chunk, h.Len())
-	for i := len(results) - 1; i >= 0; i-- {
-		results[i] = heap.Pop(h).(retrieval.Chunk)
-	}
-
-	return results
+	return h.DrainDesc()
 }
 
 func embeddingSim(a, b retrieval.Chunk) float64 {

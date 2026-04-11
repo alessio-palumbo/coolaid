@@ -102,6 +102,10 @@ func (b *BM25) ScoreAndNormalize(query string, chunks []Chunk) {
 	}
 }
 
+func (b *BM25) IDF(term string) float64 {
+	return b.idf[term]
+}
+
 // tokenize lowercases and splits on whitespace.
 func tokenize(s string) []string {
 	s = strings.ToLower(s)

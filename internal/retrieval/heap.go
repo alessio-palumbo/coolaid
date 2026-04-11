@@ -1,5 +1,7 @@
 package retrieval
 
+import "container/heap"
+
 // ChunkHeap keeps track of the top scoring Chunks.
 type ChunkHeap []Chunk
 
@@ -17,4 +19,16 @@ func (h *ChunkHeap) Pop() any {
 	item := old[n-1]
 	*h = old[:n-1]
 	return item
+}
+
+func (h *ChunkHeap) DrainDesc() []Chunk {
+	n := h.Len()
+	out := make([]Chunk, n)
+
+	// pop min → fill from end → descending result
+	// use heap package to maintain heap behaviour, e.g. ordering.
+	for i := n - 1; i >= 0; i-- {
+		out[i] = heap.Pop(h).(Chunk)
+	}
+	return out
 }

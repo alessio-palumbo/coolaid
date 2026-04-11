@@ -62,6 +62,7 @@ func init() {
 		string(TemplateChat),
 		string(TemplateTestGo),
 		string(TemplateTestGeneric),
+		string(TemplateAskWeb),
 	}
 
 	for _, file := range files {
