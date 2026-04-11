@@ -9,43 +9,6 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestJoinResult(t *testing.T) {
-	iA := Item{Content: "file: file_a.go (lines 1-1)\n\nfunc A()"}
-	iB := Item{Content: "file: file_b.go (lines 1-1)\n\nfunc B()"}
-	iC := Item{Content: "file: file_c.go (lines 1-1)\n\nfunc C()"}
-
-	results := []Result{
-		{Item: iA, Score: 0.879},
-		{Item: iB, Score: 0.654},
-		{Item: iC, Score: 0.342},
-	}
-
-	want := `
-[1] (score: 0.879)
-file: file_a.go (lines 1-1)
-
-func A()
-
----
-
-[2] (score: 0.654)
-file: file_b.go (lines 1-1)
-
-func B()
-
----
-
-[3] (score: 0.342)
-file: file_c.go (lines 1-1)
-
-func C()
-
----
-`
-
-	assert.Equal(t, want, JoinResults(results...))
-}
-
 func TestNewStore(t *testing.T) {
 	// Test initialisation with hash.
 	pRoot := "/home/me/project/root"
@@ -123,7 +86,7 @@ func TestSearch(t *testing.T) {
 			results, _ := store.Search(query, tc.k, false)
 			assert.Equal(t, tc.expectN, len(results))
 			for i := range results {
-				assert.Equal(t, tc.expectContent[i], results[i].Content)
+				assert.Equal(t, tc.expectContent[i], results[i].Text)
 			}
 		})
 	}

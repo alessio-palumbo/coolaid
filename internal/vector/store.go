@@ -6,7 +6,6 @@ import (
 	"coolaid/internal/retrieval"
 	"database/sql"
 	"fmt"
-	"math"
 	"os"
 	"path/filepath"
 	"slices"
@@ -16,8 +15,8 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 )
 
-// defaultMMRLambda controls the tradeoff between relevance (1) and diversity (0).
-const defaultMMRLambda = 0.85
+// mmrLambda controls the tradeoff between relevance (1) and diversity (0).
+const mmrLambda = 0.85
 
 // mmrOversampleFactor is the k-multiplier used to search for candidates.
 const mmrOversampleFactor = 4
@@ -51,37 +50,6 @@ type Store struct {
 	DBPath      string
 	Items       []Item
 	Summary     string
-}
-
-// JoinResults formats returns a formatted string of results printing or for LLM prompting.
-// It prepends ranking and score as metadata and assumes file and lines are
-// already present at the top of each chunk (Item.Content).
-func JoinResults(results ...Result) string {
-	var out string
-	for i, r := range results {
-		out += fmt.Sprintf(
-			"\n[%d] (score: %.3f)\n%s\n\n---\n",
-			i+1,
-			r.Score,
-			r.Content,
-		)
-	}
-	return out
-}
-
-// ToContextChunks converts vector search results into retrieval.Chunk values
-// suitable for LLM prompting. It maps content, source, and score into a
-// unified format consumed by downstream components.
-func ToContextChunks(results ...Result) []retrieval.Chunk {
-	var out []retrieval.Chunk
-	for _, r := range results {
-		out = append(out, retrieval.Chunk{
-			Text:   r.Content,
-			Source: r.FilePath,
-			Score:  r.Score,
-		})
-	}
-	return out
 }
 
 // NewStore creates and initializes a vector Store backed by SQLite.
@@ -133,24 +101,7 @@ func (s *Store) AddSummary(summary string) {
 
 // If useMMR is true it then applies Max Marginal Relevance (MMR) to the candidate set
 // of sizez k*mmrOversampleFactor.
-//
-// MMR balances two objectives:
-//  1. Relevance to the query (via cosine similarity)
-//  2. Diversity from already selected results
-//
-// The scoring function is:
-//
-//	score = λ * sim(query, candidate) - (1 - λ) * max_sim(candidate, selected)
-//
-// where:
-//   - λ (lambda) controls the tradeoff between relevance and diversity
-//   - sim() is cosine similarity
-//
-// Higher λ → more relevance (less diversity)
-// Lower λ → more diversity (less relevance)
-//
-// This helps avoid returning many similar chunks (e.g. from the same file).
-func (s *Store) Search(query []float64, k int, useMMR bool) ([]Result, error) {
+func (s *Store) Search(query []float64, k int, useMMR bool) ([]retrieval.Chunk, error) {
 	if k <= 0 {
 		return nil, fmt.Errorf("invalid value for k: [%d]", k)
 	}
@@ -158,12 +109,11 @@ func (s *Store) Search(query []float64, k int, useMMR bool) ([]Result, error) {
 		return nil, err
 	}
 
-	query = normalize(query)
 	if useMMR {
-		candidates := s.topK(query, k*mmrOversampleFactor)
-		return mmr(candidates, k, defaultMMRLambda), nil
+		candidates := s.topKFromItems(query, k*mmrOversampleFactor)
+		return retrieval.MMR(candidates, k, mmrLambda, embeddingSim), nil
 	}
-	return s.topK(query, k), nil
+	return s.topKFromItems(query, k), nil
 }
 
 // EnsureLoaded lazily loads the store from the DB only if Items is empty
@@ -183,94 +133,73 @@ func (s *Store) EnsureLoaded() error {
 //
 // Matching is exact and case-sensitive. Results are returned in insertion order
 // and limited by the provided 'limit'.
-func (s *Store) FindBySymbol(query, sym string, limit int) ([]Result, error) {
+func (s *Store) FindBySymbol(query, sym string, limit int) ([]retrieval.Chunk, error) {
 	if err := s.EnsureLoaded(); err != nil {
 		return nil, err
 	}
 
 	nSym := normalizeSymbol(sym)
-	var results []Result
+	var chunks []retrieval.Chunk
 	for _, it := range s.Items {
 		if it.Symbol == nSym {
-			results = append(results, Result{
-				Item:  it,
-				Score: scoreSymbol(it, query),
+			chunks = append(chunks, retrieval.Chunk{
+				Text:      it.Content,
+				Source:    it.FilePath,
+				Embedding: it.Embedding,
+				Score:     scoreSymbol(it, query),
 			})
-			if len(results) >= limit {
+			if len(chunks) >= limit {
 				break
 			}
 		}
 	}
 
 	// Sort in descending order.
-	slices.SortFunc(results, func(a, b Result) int {
+	slices.SortFunc(chunks, func(a, b retrieval.Chunk) int {
 		return cmp.Compare(b.Score, a.Score)
 	})
-	return results, nil
+	return chunks, nil
 }
 
-func (s *Store) topK(query []float64, k int) []Result {
-	h := &resultHeap{}
+func (s *Store) topKFromItems(query []float64, k int) []retrieval.Chunk {
+	if len(s.Items) == 0 || k <= 0 {
+		return nil
+	}
+
+	h := &retrieval.ChunkHeap{}
 	heap.Init(h)
+
+	query = normalize(query)
 
 	for _, item := range s.Items {
 		score := cosine(query, item.Embedding)
-		r := Result{
-			Item:  item,
-			Score: score,
+		c := retrieval.Chunk{
+			Text:      item.Content,
+			Source:    item.FilePath,
+			Score:     score,
+			Embedding: item.Embedding,
 		}
 
 		if h.Len() < k {
-			heap.Push(h, r)
+			heap.Push(h, c)
 			continue
 		}
 		if score > (*h)[0].Score {
 			heap.Pop(h)
-			heap.Push(h, r)
+			heap.Push(h, c)
 		}
 	}
 
-	results := make([]Result, h.Len())
+	results := make([]retrieval.Chunk, h.Len())
 	for i := len(results) - 1; i >= 0; i-- {
-		results[i] = heap.Pop(h).(Result)
+		results[i] = heap.Pop(h).(retrieval.Chunk)
 	}
+
 	return results
 }
 
-func mmr(results []Result, k int, lambda float64) []Result {
-	selected := make([]Result, 0, k)
-	candidates := make([]Result, len(results))
-	copy(candidates, results)
-
-	for len(selected) < k && len(candidates) > 0 {
-		var bestIdx int
-		bestScore := math.Inf(-1)
-
-		for i, cand := range candidates {
-			// Determine how similar this candidate to other picked items.
-			var maxSimToSelected float64
-			for _, sel := range selected {
-				sim := cosine(cand.Embedding, sel.Embedding)
-				if sim > maxSimToSelected {
-					maxSimToSelected = sim
-				}
-			}
-
-			// Determine score based on relevace but penalise if it's too similar to what we already have.
-			score := lambda*cand.Score - (1-lambda)*maxSimToSelected
-
-			if score > bestScore {
-				bestScore = score
-				bestIdx = i
-			}
-		}
-
-		selected = append(selected, candidates[bestIdx])
-		// remove selected candidate
-		candidates = slices.Delete(candidates, bestIdx, bestIdx+1)
-	}
-
-	return selected
+func embeddingSim(a, b retrieval.Chunk) float64 {
+	return cosine(a.Embedding, b.Embedding)
 }
 
 func openDB(path string) (*sql.DB, error) {

@@ -1,8 +1,8 @@
 package benchmark
 
 import (
-	"coolaid/internal/vector"
 	"context"
+	"coolaid/internal/retrieval"
 	"fmt"
 	"log"
 	"strings"
@@ -46,7 +46,7 @@ var testSearchOpts = []searchOpts{
 }
 
 type Searcher interface {
-	SemanticSearch(ctx context.Context, prompt string, k int, useMMR bool) ([]vector.Result, error)
+	SemanticSearch(ctx context.Context, prompt string, k int, useMMR bool) ([]retrieval.Chunk, error)
 }
 
 func Run(searcher Searcher) {
@@ -55,25 +55,25 @@ func Run(searcher Searcher) {
 		ctx := context.Background()
 
 		for _, opts := range testSearchOpts {
-			results, err := searcher.SemanticSearch(ctx, tc.Query, opts.k, opts.useMMR)
+			chunks, err := searcher.SemanticSearch(ctx, tc.Query, opts.k, opts.useMMR)
 			if err != nil {
 				log.Fatal(err)
 			}
-			s := score(results, tc.ExpectedFiles)
+			s := score(chunks, tc.ExpectedFiles)
 			fmt.Printf(" (k:%d-mmr:%v): %.2f\n", opts.k, opts.useMMR, s)
-			for _, r := range results {
-				fmt.Println(" -", r.FilePath)
+			for _, c := range chunks {
+				fmt.Println(" -", c.Source)
 			}
 			fmt.Println()
 		}
 	}
 }
 
-func score(results []vector.Result, expected []string) float64 {
+func score(chunks []retrieval.Chunk, expected []string) float64 {
 	hits := 0
 	for _, e := range expected {
-		for _, r := range results {
-			if strings.Contains(r.FilePath, e) {
+		for _, c := range chunks {
+			if strings.Contains(c.Source, e) {
 				hits++
 				break
 			}

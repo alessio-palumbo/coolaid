@@ -6,7 +6,7 @@ import (
 	"coolaid/internal/indexer"
 	"coolaid/internal/prompts"
 	"coolaid/internal/query"
-	"coolaid/internal/vector"
+	"coolaid/internal/retrieval"
 	"coolaid/internal/web"
 	"errors"
 	"fmt"
@@ -205,7 +205,7 @@ func (c *Client) Search(ctx context.Context, prompt string, opts ...TaskOption) 
 		return TaskResult{Status: TaskStatus{NoResults: true}}, nil
 	}
 
-	fmt.Fprint(c.writer, vector.JoinResults(results...))
+	fmt.Fprint(c.writer, retrieval.JoinChunks(results...))
 	return TaskResult{}, nil
 }
 
@@ -265,7 +265,7 @@ func (c *Client) Query(ctx context.Context, prompt string, opts ...TaskOption) (
 	if usedSummary {
 		pConfig.Summary = c.store.Summary
 	}
-	renderedPrompt, err := prompts.Render(pConfig, prompt, vector.ToContextChunks(results...)...)
+	renderedPrompt, err := prompts.Render(pConfig, prompt, results...)
 	if err != nil {
 		return TaskResult{}, err
 	}
@@ -292,7 +292,7 @@ func (c *Client) Explain(ctx context.Context, target Target, opts ...TaskOption)
 
 	// Exclude any chunks matching the file to avoid wasting tokens.
 	for i, r := range results {
-		if strings.Contains(r.FilePath, target.File) {
+		if strings.Contains(r.Source, target.File) {
 			results = slices.Delete(results, i, i+1)
 		}
 	}
@@ -304,7 +304,7 @@ func (c *Client) Explain(ctx context.Context, target Target, opts ...TaskOption)
 	}
 	prompt, err := prompts.Render(
 		pConfig.WithTarget(target.File, target.Function),
-		extractTarget(data, target.Function), vector.ToContextChunks(results...)...,
+		extractTarget(data, target.Function), results...,
 	)
 	if err != nil {
 		return TaskResult{}, err
@@ -340,7 +340,7 @@ func (c *Client) GenerateTests(ctx context.Context, target Target, opts ...TaskO
 
 	prompt, err := prompts.Render(
 		pConfig.WithTarget(target.File, target.Function),
-		extractTarget(data, target.Function), vector.ToContextChunks(results...)...)
+		extractTarget(data, target.Function), results...)
 	if err != nil {
 		return TaskResult{}, err
 	}
@@ -364,8 +364,8 @@ func (c *Client) GenerateTests(ctx context.Context, target Target, opts ...TaskO
 //
 // This approach balances deterministic identifier-based retrieval with semantic
 // similarity, while limiting noise and preserving result count expectations.
-func (c *Client) DoSearch(ctx context.Context, prompt string, k int, useMMR bool, preferSymbol bool) ([]vector.Result, error) {
-	var symbolResults []vector.Result
+func (c *Client) DoSearch(ctx context.Context, prompt string, k int, useMMR bool, preferSymbol bool) ([]retrieval.Chunk, error) {
+	var symbolResults []retrieval.Chunk
 	for _, sym := range query.ExtractIdentifiers(prompt) {
 		results, err := c.store.FindBySymbol(prompt, sym, k)
 		if err != nil {
@@ -395,9 +395,9 @@ func (c *Client) DoSearch(ctx context.Context, prompt string, k int, useMMR bool
 
 // SemanticSearch performs a vector similarity search against the index.
 //
-// It embeds the prompt and retrieves the top-k most relevant results.
+// It embeds the prompt and retrieves the top-k most relevant chunks.
 // If useMMR is true, Max Marginal Relevance is applied to improve diversity.
-func (c *Client) SemanticSearch(ctx context.Context, prompt string, k int, useMMR bool) ([]vector.Result, error) {
+func (c *Client) SemanticSearch(ctx context.Context, prompt string, k int, useMMR bool) ([]retrieval.Chunk, error) {
 	queryVec, err := c.llm.Embed(prompt)
 	if err != nil {
 		return nil, err
@@ -420,7 +420,7 @@ func (c *Client) SemanticSearch(ctx context.Context, prompt string, k int, useMM
 //
 // Note: This method currently performs semantic-only retrieval. It may be extended
 // in the future to leverage hybrid (symbol + semantic) search for improved precision.
-func (c *Client) retrieveFromTarget(ctx context.Context, target Target, taskCfg *taskConfig) ([]vector.Result, []byte, error) {
+func (c *Client) retrieveFromTarget(ctx context.Context, target Target, taskCfg *taskConfig) ([]retrieval.Chunk, []byte, error) {
 	if err := target.validate(); err != nil {
 		return nil, nil, err
 	}
@@ -442,8 +442,8 @@ func enrichWithSummary(prompt, summary string) string {
 }
 
 // shouldRetry determines whether a search should be retried with
-// additional context (e.g. summary) based on result quality.
-func shouldRetry(results []vector.Result) bool {
+// additional context (e.g. summary) based on chunk quality.
+func shouldRetry(results []retrieval.Chunk) bool {
 	return len(results) == 0 || results[0].Score < minAcceptableScore
 }
 
@@ -496,18 +496,18 @@ func extractTarget(src []byte, fn string) string {
 
 // mergeResults combines symbol-based and semantic search results into a single ranked list.
 //
-// Results are appended and then sorted by score in descending order. The final slice
+// Chunks are appended and then sorted by score in descending order. The final slice
 // is truncated to at most k elements.
 //
 // It assumes both input slices use the same scoring scale (e.g. cosine similarity in [0,1]).
-// Symbol results are typically higher precision and expected to rank above semantic results,
+// Symbol chunks are typically higher precision and expected to rank above semantic chunks,
 // but no explicit boosting is applied here.
 //
-// This function does not deduplicate results. Callers should ensure inputs are distinct
+// This function does not deduplicate chunks. Callers should ensure inputs are distinct
 // if necessary.
-func mergeResults(sym, vec []vector.Result, k int) []vector.Result {
+func mergeResults(sym, vec []retrieval.Chunk, k int) []retrieval.Chunk {
 	results := append(sym, vec...)
-	slices.SortFunc(results, func(a, b vector.Result) int {
+	slices.SortFunc(results, func(a, b retrieval.Chunk) int {
 		return cmp.Compare(b.Score, a.Score)
 	})
 

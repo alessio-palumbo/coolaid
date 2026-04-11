@@ -4,7 +4,6 @@ import (
 	"context"
 	"coolaid/internal/llm"
 	"coolaid/internal/prompts"
-	"coolaid/internal/vector"
 )
 
 // ChatSession represents a stateful conversation with the LLM.
@@ -63,7 +62,7 @@ func (s *ChatSession) Send(ctx context.Context, msg string) error {
 		Template:       prompts.TemplateChat,
 		SystemOverride: s.cfg.prompt.systemOverride,
 		Structured:     s.cfg.prompt.structuredOutput,
-	}, msg, vector.ToContextChunks(results...)...)
+	}, msg, results...)
 	if err != nil {
 		return err
 	}
