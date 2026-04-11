@@ -142,7 +142,8 @@ func (c *Client) Index(ctx context.Context, onProgress func(IndexProgress), onCo
 }
 
 type AskOptions struct {
-	UseWeb bool
+	UseWeb      bool
+	SearchLimit int
 }
 
 // Ask sends a raw prompt directly to the LLM and streams the response.
@@ -153,8 +154,8 @@ func (c *Client) Ask(ctx context.Context, prompt string, opts AskOptions) error 
 		return ErrEmptyPrompt
 	}
 
-	if opts.UseWeb {
-		chunks, err := web.NewPipeline(5).Run(ctx, prompt)
+	if opts.UseWeb && opts.SearchLimit > 0 {
+		chunks, err := web.NewPipeline(opts.SearchLimit).Run(ctx, prompt)
 		if err != nil {
 			return err
 		}

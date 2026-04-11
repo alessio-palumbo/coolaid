@@ -165,6 +165,9 @@ whenever:
 ./ai ask "What is a mutex in Go?"
 ```
 
+- -web optional, performs a web search on the prompt (use DuckDuckGo html search)
+- -search_limit optional, set limit for search responses (defaults to 5)
+
 ### Summarize code (LLM only)
 
 ```bash
