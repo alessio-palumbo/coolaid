@@ -18,6 +18,10 @@ func FixCommand(client *ai.Client, sw *spinner.StreamWriter) *cli.Command {
 				Name:  "fn",
 				Usage: "function to edit",
 			},
+			&cli.StringFlag{
+				Name:  "rng",
+				Usage: "start and end line to edit (start-end)",
+			},
 			&cli.BoolFlag{
 				Name:  "rag",
 				Value: false,

@@ -245,28 +245,31 @@ Notes:
 ### Edit file or function (optional RAG)
 
 ```bash
-./ai edit [-fn functionName] [-rag] path/to/file.go
+./ai edit [-fn functionName] [-rng 15-30] [-rag] path/to/file.go
 ```
 
 - -fn optional, targets functionName only
+- -rng optional, targets file line range (start-line)
 - -rag optional, set to true to use RAG for extra context
 
 ### Fix file or function (optional RAG)
 
 ```bash
-./ai fix [-fn functionName] [-rag] path/to/file.go
+./ai fix [-fn functionName] [-rng 15-30] [-rag] path/to/file.go
 ```
 
 - -fn optional, targets functionName only
+- -rng optional, targets file line range (start-line)
 - -rag optional, set to true to use RAG for extra context
 
 ### Refactor a file or function (optional RAG)
 
 ```bash
-./ai refactor [-fn functionName] [-rag] path/to/file.go
+./ai refactor [-fn functionName] [-rng 15-30] [-rag] path/to/file.go
 ```
 
 - -fn optional, targets functionName only
+- -rng optional, targets file line range (start-line)
 - -rag optional, set to true to use RAG for extra context
 
 ### Comment a file or function (optional RAG)
