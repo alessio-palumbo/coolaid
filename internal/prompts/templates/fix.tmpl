@@ -1,0 +1,29 @@
+{{- define "content" }}
+
+TARGET TYPE: {{.Target.Type}}
+{{- if eq .Target.Type "function" }}
+TARGET FUNCTION: {{.Target.Name}}
+{{- else if eq .Target.Type "file" }}
+TARGET FILE: {{.Target.Name}}
+{{- end }}
+
+You are given a code snippet that contains a bug or incorrect behavior.
+{{ if eq .Target.Type "file" -}}
+Fix the TARGET FILE in TARGET BODY.
+{{ else if eq .Target.Type "function" -}}
+Fix the TARGET FUNCTION in TARGET BODY
+{{ end -}}
+
+Your task:
+- Identify the issue
+- Fix it with minimal necessary changes
+- Do not refactor unless required to fix the issue
+- Preserve existing structure and naming where possible
+- Ensure the code is correct and idiomatic
+
+If multiple issues exist:
+- prioritize correctness first
+- then safety
+- then clarity
+
+{{- end }}

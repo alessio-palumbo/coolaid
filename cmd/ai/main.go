@@ -37,6 +37,9 @@ func main() {
 			command.ChatCommand(client, sw),
 			command.TestCommand(client, sw),
 			command.EditCommand(client, sw),
+			command.FixCommand(client, sw),
+			command.RefactorCommand(client, sw),
+			command.CommentCommand(client, sw),
 		},
 	}
 

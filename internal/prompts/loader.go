@@ -19,6 +19,9 @@ const (
 	TemplateTestGeneric PromptTemplate = "test-generic.tmpl"
 	TemplateAskWeb      PromptTemplate = "ask-web.tmpl"
 	TemplateEdit        PromptTemplate = "edit.tmpl"
+	TemplateFix         PromptTemplate = "fix.tmpl"
+	TemplateRefactor    PromptTemplate = "refactor.tmpl"
+	TemplateComment     PromptTemplate = "comment.tmpl"
 )
 
 type targetType string
@@ -65,6 +68,9 @@ func init() {
 		string(TemplateTestGeneric),
 		string(TemplateAskWeb),
 		string(TemplateEdit),
+		string(TemplateFix),
+		string(TemplateRefactor),
+		string(TemplateComment),
 	}
 
 	for _, file := range files {

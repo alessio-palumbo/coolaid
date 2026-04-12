@@ -1,0 +1,29 @@
+{{- define "content" }}
+
+TARGET TYPE: {{.Target.Type}}
+{{- if eq .Target.Type "function" }}
+TARGET FUNCTION: {{.Target.Name}}
+{{- else if eq .Target.Type "file" }}
+TARGET FILE: {{.Target.Name}}
+{{- end }}
+
+You are given working code that needs improvement.
+{{ if eq .Target.Type "file" -}}
+Refactor the TARGET FILE in TARGET BODY.
+{{ else if eq .Target.Type "function" -}}
+Refactor the TARGET FUNCTION in TARGET BODY.
+{{ end -}}
+
+Your task:
+- Refactor for clarity, maintainability, and idiomatic style
+- Do not change external behavior
+- Do not introduce new features
+- Prefer small, safe transformations
+- Preserve public APIs and function signatures
+
+Focus on:
+- readability
+- simplification
+- reducing duplication
+
+{{- end }}

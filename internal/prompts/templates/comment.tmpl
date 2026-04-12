@@ -1,0 +1,30 @@
+{{- define "content" }}
+
+TARGET TYPE: {{.Target.Type}}
+{{- if eq .Target.Type "function" }}
+TARGET FUNCTION: {{.Target.Name}}
+{{- else if eq .Target.Type "file" }}
+TARGET FILE: {{.Target.Name}}
+{{- end }}
+
+You are given a code snippet.
+{{ if eq .Target.Type "file" -}}
+Comment the TARGET FILE in TARGET BODY.
+{{ else if eq .Target.Type "function" -}}
+Comment the TARGET FUNCTION in TARGET BODY.
+{{ end -}}
+
+Your task:
+- Add or improve comments where they add real value
+- Ensure comments explain *why*, not just *what*
+- Use idiomatic style for the target language
+- Keep comments concise, clear, and technically precise
+- Avoid redundant or obvious comments
+- Preserve existing code without modifications
+
+Focus on:
+- clarifying intent
+- explaining non-obvious logic
+- improving maintainability for future readers
+
+{{- end }}
