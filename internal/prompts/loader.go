@@ -8,17 +8,17 @@ import (
 	"text/template"
 )
 
-type promptTemplate string
+type PromptTemplate string
 
 const (
-	TemplateExplain     promptTemplate = "explain.tmpl"
-	TemplateSummarize   promptTemplate = "summarize.tmpl"
-	TemplateQuery       promptTemplate = "query.tmpl"
-	TemplateChat        promptTemplate = "chat.tmpl"
-	TemplateTestGo      promptTemplate = "test-go.tmpl"
-	TemplateTestGeneric promptTemplate = "test-generic.tmpl"
-	TemplateAskWeb      promptTemplate = "ask-web.tmpl"
-	TemplateEdit        promptTemplate = "edit.tmpl"
+	TemplateExplain     PromptTemplate = "explain.tmpl"
+	TemplateSummarize   PromptTemplate = "summarize.tmpl"
+	TemplateQuery       PromptTemplate = "query.tmpl"
+	TemplateChat        PromptTemplate = "chat.tmpl"
+	TemplateTestGo      PromptTemplate = "test-go.tmpl"
+	TemplateTestGeneric PromptTemplate = "test-generic.tmpl"
+	TemplateAskWeb      PromptTemplate = "ask-web.tmpl"
+	TemplateEdit        PromptTemplate = "edit.tmpl"
 )
 
 type targetType string
@@ -74,7 +74,7 @@ func init() {
 }
 
 type Config struct {
-	Template       promptTemplate
+	Template       PromptTemplate
 	SystemOverride string
 	Structured     bool
 	Summary        string

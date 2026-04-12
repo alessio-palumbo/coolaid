@@ -52,7 +52,7 @@ func (s *ChatSession) Send(ctx context.Context, msg string) error {
 	s.history = append(s.history, userMsg(msg))
 
 	// try retrieval (non-blocking)
-	results, err := s.client.SemanticSearch(ctx, msg, s.cfg.retrieval.k, s.cfg.retrieval.useMMR)
+	results, err := s.client.semanticSearch(ctx, msg, s.cfg.retrieval.k, s.cfg.retrieval.useMMR)
 	if err != nil {
 		return err
 	}

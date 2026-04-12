@@ -198,7 +198,7 @@ func (c *Client) Search(ctx context.Context, prompt string, opts ...TaskOption) 
 	}
 
 	taskCfg := parseTaskOptions(opts...)
-	results, err := c.DoSearch(ctx, prompt, taskCfg.retrieval.k, taskCfg.retrieval.useMMR, false)
+	results, err := c.doSearch(ctx, prompt, taskCfg.retrieval.k, taskCfg.retrieval.useMMR, false)
 	if err != nil {
 		return TaskResult{}, err
 	}
@@ -240,7 +240,7 @@ func (c *Client) Query(ctx context.Context, prompt string, opts ...TaskOption) (
 		usedSummary = true
 	}
 
-	results, err := c.DoSearch(ctx, searchPrompt, taskCfg.retrieval.k, taskCfg.retrieval.useMMR, false)
+	results, err := c.doSearch(ctx, searchPrompt, taskCfg.retrieval.k, taskCfg.retrieval.useMMR, false)
 	if err != nil {
 		return TaskResult{}, err
 	}
@@ -249,7 +249,7 @@ func (c *Client) Query(ctx context.Context, prompt string, opts ...TaskOption) (
 		searchPrompt = enrichWithSummary(searchPrompt, c.store.Summary)
 		usedSummary = true
 
-		results, err = c.SemanticSearch(ctx, searchPrompt, taskCfg.retrieval.k, taskCfg.retrieval.useMMR)
+		results, err = c.semanticSearch(ctx, searchPrompt, taskCfg.retrieval.k, taskCfg.retrieval.useMMR)
 		if err != nil {
 			return TaskResult{}, err
 		}
@@ -281,34 +281,7 @@ func (c *Client) Query(ctx context.Context, prompt string, opts ...TaskOption) (
 // and excludes the target file itself from the retrieved context
 // to avoid redundant information.
 func (c *Client) Explain(ctx context.Context, target Target, opts ...TaskOption) (TaskResult, error) {
-	taskCfg := parseTaskOptions(opts...)
-
-	results, data, err := c.retrieveFromTarget(ctx, target, taskCfg)
-	if err != nil {
-		return TaskResult{}, err
-	}
-
-	// Exclude any chunks matching the file to avoid wasting tokens.
-	for i, r := range results {
-		if strings.Contains(r.Source, target.File) {
-			results = slices.Delete(results, i, i+1)
-		}
-	}
-
-	pConfig := &prompts.Config{
-		Template:       prompts.TemplateExplain,
-		SystemOverride: taskCfg.prompt.systemOverride,
-		Structured:     taskCfg.prompt.structuredOutput,
-	}
-	prompt, err := prompts.Render(
-		pConfig.WithTarget(target.File, target.Function, extractTarget(data, target.Function)),
-		"", results...,
-	)
-	if err != nil {
-		return TaskResult{}, err
-	}
-
-	return TaskResult{}, c.llm.GenerateStream(prompt, c.writer)
+	return c.runTargetTask(ctx, target, "", prompts.TemplateExplain, opts)
 }
 
 // GenerateTests generates tests for a given target.
@@ -316,31 +289,11 @@ func (c *Client) Explain(ctx context.Context, target Target, opts ...TaskOption)
 // It retrieves relevant context from the index and uses a language-
 // specific template when supported.
 func (c *Client) GenerateTests(ctx context.Context, target Target, opts ...TaskOption) (TaskResult, error) {
-	taskCfg := parseTaskOptions(opts...)
-
-	results, data, err := c.retrieveFromTarget(ctx, target, taskCfg)
-	if err != nil {
-		return TaskResult{}, err
-	}
-
-	pConfig := &prompts.Config{
-		SystemOverride: taskCfg.prompt.systemOverride,
-		Structured:     taskCfg.prompt.structuredOutput,
-	}
+	template := prompts.TemplateTestGeneric
 	if isSupportedLanguage(target.File) {
-		pConfig.Template = prompts.TemplateTestGo
-	} else {
-		pConfig.Template = prompts.TemplateTestGeneric
+		template = prompts.TemplateTestGo
 	}
-
-	prompt, err := prompts.Render(
-		pConfig.WithTarget(target.File, target.Function, extractTarget(data, target.Function)),
-		"", results...)
-	if err != nil {
-		return TaskResult{}, err
-	}
-
-	return TaskResult{}, c.llm.GenerateStream(prompt, c.writer)
+	return c.runTargetTask(ctx, target, "", template, opts)
 }
 
 // Edit modifies code based on a user-provided instruction.
@@ -354,6 +307,20 @@ func (c *Client) GenerateTests(ctx context.Context, target Target, opts ...TaskO
 // This is a general-purpose code transformation primitive used for fixes,
 // refactors, and targeted rewrites.
 func (c *Client) Edit(ctx context.Context, target Target, prompt string, opts ...TaskOption) (TaskResult, error) {
+	return c.runTargetTask(ctx, target, prompt, prompts.TemplateEdit, opts)
+}
+
+// runTargetTask is a shared helper for target-based LLM tasks.
+//
+// It loads the target file, optionally retrieves supporting context (based on
+// retrieval settings), and renders a prompt using the provided template.
+//
+// The target body (file or function) is always included, while retrieved chunks
+// are passed as optional context to improve reasoning when enabled.
+//
+// This function centralizes prompt construction and execution, ensuring
+// consistent behavior across all target-based commands.
+func (c *Client) runTargetTask(ctx context.Context, target Target, prompt string, template prompts.PromptTemplate, opts []TaskOption) (TaskResult, error) {
 	taskCfg := parseTaskOptions(opts...)
 
 	results, data, err := c.retrieveFromTarget(ctx, target, taskCfg)
@@ -361,12 +328,22 @@ func (c *Client) Edit(ctx context.Context, target Target, prompt string, opts ..
 		return TaskResult{}, err
 	}
 
+	// Exclude any chunks matching the file to avoid wasting tokens unless function is defined.
+	if target.Function == "" {
+		for i := 0; i < len(results); i++ {
+			if strings.Contains(results[i].Source, target.File) {
+				results = slices.Delete(results, i, i+1)
+				i--
+			}
+		}
+	}
+
 	pConfig := &prompts.Config{
-		Template:       prompts.TemplateEdit,
+		Template:       template,
 		SystemOverride: taskCfg.prompt.systemOverride,
 		Structured:     taskCfg.prompt.structuredOutput,
 	}
-	prompt, err = prompts.Render(
+	renderedPrompt, err := prompts.Render(
 		pConfig.WithTarget(target.File, target.Function, extractTarget(data, target.Function)),
 		prompt, results...,
 	)
@@ -374,10 +351,10 @@ func (c *Client) Edit(ctx context.Context, target Target, prompt string, opts ..
 		return TaskResult{}, err
 	}
 
-	return TaskResult{}, c.llm.GenerateStream(prompt, c.writer)
+	return TaskResult{}, c.llm.GenerateStream(renderedPrompt, c.writer)
 }
 
-// DoSearch retrieves relevant chunks for a given prompt using a symbol-first strategy.
+// doSearch retrieves relevant chunks for a given prompt using a symbol-first strategy.
 //
 // It first attempts to extract a code-like identifier (e.g. "TestCommand")
 // and performs a fast in-memory symbol lookup. Symbol matches are high-precision
@@ -393,7 +370,7 @@ func (c *Client) Edit(ctx context.Context, target Target, prompt string, opts ..
 //
 // This approach balances deterministic identifier-based retrieval with semantic
 // similarity, while limiting noise and preserving result count expectations.
-func (c *Client) DoSearch(ctx context.Context, prompt string, k int, useMMR bool, preferSymbol bool) ([]retrieval.Chunk, error) {
+func (c *Client) doSearch(ctx context.Context, prompt string, k int, useMMR bool, preferSymbol bool) ([]retrieval.Chunk, error) {
 	var symbolResults []retrieval.Chunk
 	for _, sym := range query.ExtractIdentifiers(prompt) {
 		results, err := c.store.FindBySymbol(prompt, sym, k)
@@ -412,7 +389,7 @@ func (c *Client) DoSearch(ctx context.Context, prompt string, k int, useMMR bool
 	if len(symbolResults) > 0 {
 		semanticK = k - len(symbolResults)
 	}
-	semanticResults, err := c.SemanticSearch(ctx, prompt, semanticK, useMMR)
+	semanticResults, err := c.semanticSearch(ctx, prompt, semanticK, useMMR)
 	if err != nil {
 		return nil, err
 	}
@@ -422,11 +399,11 @@ func (c *Client) DoSearch(ctx context.Context, prompt string, k int, useMMR bool
 	return mergeResults(symbolResults, semanticResults, k), nil
 }
 
-// SemanticSearch performs a vector similarity search against the index.
+// semanticSearch performs a vector similarity search against the index.
 //
 // It embeds the prompt and retrieves the top-k most relevant chunks.
 // If useMMR is true, Max Marginal Relevance is applied to improve diversity.
-func (c *Client) SemanticSearch(ctx context.Context, prompt string, k int, useMMR bool) ([]retrieval.Chunk, error) {
+func (c *Client) semanticSearch(ctx context.Context, prompt string, k int, useMMR bool) ([]retrieval.Chunk, error) {
 	queryVec, err := c.llm.Embed(prompt)
 	if err != nil {
 		return nil, err
@@ -467,7 +444,7 @@ func (c *Client) retrieveFromTarget(ctx context.Context, target Target, taskCfg 
 
 	// Find dependencies chunks to pass as dependencies to LLM.
 	signals := query.ExtractSignals(target.File, data, false)
-	results, err := c.DoSearch(ctx, signals, taskCfg.retrieval.k, taskCfg.retrieval.useMMR, false)
+	results, err := c.doSearch(ctx, signals, taskCfg.retrieval.k, taskCfg.retrieval.useMMR, false)
 	return results, data, err
 }
 
