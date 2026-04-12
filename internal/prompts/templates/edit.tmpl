@@ -10,11 +10,9 @@ TARGET FILE: {{.Target.Name}}
 Instructions:
 
 {{ if eq .Target.Type "file" -}}
-Fix the TARGET FILE in TARGET BODY according the USER REQUEST:
-
+Edit the TARGET FILE in TARGET BODY according the USER REQUEST:
 {{ else if eq .Target.Type "function" -}}
-Fix the TARGET FUNCTION in TARGET BODY according the USER REQUEST:
-
+Edit the TARGET FUNCTION in TARGET BODY according the USER REQUEST:
 {{ end -}}
 
 {{- end }}

@@ -310,6 +310,24 @@ func (c *Client) Edit(ctx context.Context, target Target, prompt string, opts ..
 	return c.runTargetTask(ctx, target, prompt, prompts.TemplateEdit, opts)
 }
 
+// Fix attempts to correct bugs or incorrect behavior in the given target.
+// It applies minimal changes required to restore correctness without refactoring.
+func (c *Client) Fix(ctx context.Context, target Target, opts ...TaskOption) (TaskResult, error) {
+	return c.runTargetTask(ctx, target, "", prompts.TemplateFix, opts)
+}
+
+// Refactor improves code structure and readability without changing behavior.
+// It focuses on maintainability, clarity, and idiomatic style.
+func (c *Client) Refactor(ctx context.Context, target Target, opts ...TaskOption) (TaskResult, error) {
+	return c.runTargetTask(ctx, target, "", prompts.TemplateRefactor, opts)
+}
+
+// Comment adds or improves code comments to explain intent and non-obvious logic.
+// It does not modify code behavior.
+func (c *Client) Comment(ctx context.Context, target Target, opts ...TaskOption) (TaskResult, error) {
+	return c.runTargetTask(ctx, target, "", prompts.TemplateComment, opts)
+}
+
 // runTargetTask is a shared helper for target-based LLM tasks.
 //
 // It loads the target file, optionally retrieves supporting context (based on
@@ -347,6 +365,7 @@ func (c *Client) runTargetTask(ctx context.Context, target Target, prompt string
 		pConfig.WithTarget(target.File, target.Function, extractTarget(data, target.Function)),
 		prompt, results...,
 	)
+	fmt.Println(renderedPrompt)
 	if err != nil {
 		return TaskResult{}, err
 	}
