@@ -2,7 +2,7 @@ package indexer
 
 import (
 	"coolaid/internal/llm"
-	"coolaid/internal/vector"
+	"coolaid/internal/store"
 	"log/slog"
 	"os"
 	"runtime"
@@ -15,7 +15,7 @@ type EmbedPipeline struct {
 	results chan embedResult
 
 	client *llm.Client
-	store  *vector.Store
+	store  *store.Store
 	logger *slog.Logger
 
 	wg sync.WaitGroup
@@ -38,7 +38,7 @@ type embedResult struct {
 	err       error
 }
 
-func NewEmbedPipeline(client *llm.Client, store *vector.Store, logger *slog.Logger, maxWorkers, totalFiles int, onProgress ProgressFunc) *EmbedPipeline {
+func NewEmbedPipeline(client *llm.Client, store *store.Store, logger *slog.Logger, maxWorkers, totalFiles int, onProgress ProgressFunc) *EmbedPipeline {
 	p := &EmbedPipeline{
 		jobs:       make(chan embedJob, 100),
 		results:    make(chan embedResult, 100),
@@ -96,7 +96,7 @@ func (p *EmbedPipeline) collector() {
 			continue
 		}
 
-		p.store.AddItem(vector.Item{
+		p.store.AddItem(store.Item{
 			FilePath:  res.file,
 			Symbol:    res.chunk.Symbol,
 			Kind:      res.chunk.Kind,

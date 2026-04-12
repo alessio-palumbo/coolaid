@@ -33,7 +33,7 @@ func TestClassifyQuery(t *testing.T) {
 
 		// --- Package / path references ---
 		"package path": {
-			query:    "how does internal/vector/store work",
+			query:    "how does internal/store work",
 			expected: true,
 		},
 

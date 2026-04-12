@@ -1,7 +1,7 @@
 package command
 
 import (
-	"coolaid/internal/vector"
+	"coolaid/internal/store"
 	"coolaid/pkg/ai"
 	"errors"
 	"strconv"
@@ -12,9 +12,9 @@ import (
 
 func catchIndexError(err error) error {
 	switch {
-	case errors.Is(err, vector.ErrNotIndexed):
+	case errors.Is(err, store.ErrNotIndexed):
 		return errors.New("project not indexed: run `ai index`")
-	case errors.Is(err, vector.ErrReindexRequired):
+	case errors.Is(err, store.ErrReindexRequired):
 		return errors.New("index outdated: run `ai index`")
 	}
 	return err

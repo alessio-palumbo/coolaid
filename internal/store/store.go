@@ -1,4 +1,4 @@
-package vector
+package store
 
 import (
 	"cmp"
@@ -52,7 +52,7 @@ type Store struct {
 	Summary     string
 }
 
-// NewStore creates and initializes a vector Store backed by SQLite.
+// NewStore creates and initializes a Store backed by SQLite.
 // It opens the database, ensures the required tables exist, and loads
 // the stored embeddings into memory so they can be searched efficiently.
 func NewStore(projectRoot, storeDir, dbName, configHash string) (*Store, error) {

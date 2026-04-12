@@ -3,7 +3,7 @@ package ai
 import (
 	"context"
 	"coolaid/internal/llm"
-	"coolaid/internal/vector"
+	"coolaid/internal/store"
 	"errors"
 	"io"
 )
@@ -30,14 +30,14 @@ const (
 type Client struct {
 	cfg   *Config
 	llm   *llm.Client
-	store *vector.Store
+	store *store.Store
 
 	writer io.Writer
 }
 
 // NewClient initializes a new Client using the provided configuration.
 //
-// It sets up the underlying LLM client and vector store. The returned
+// It sets up the underlying LLM client and store. The returned
 // Client is ready to be used for indexing and querying.
 //
 // writer is used for user-facing output such as progress logs or generated results.
@@ -51,7 +51,7 @@ func NewClient(cfg *Config, writer io.Writer) (*Client, error) {
 		return nil, err
 	}
 
-	store, err := vector.NewStore(cfg.ProjectRoot, cfg.StoreDir, cfg.DBName, cfg.computeConfigHash())
+	store, err := store.NewStore(cfg.ProjectRoot, cfg.StoreDir, cfg.DBName, cfg.computeConfigHash())
 	if err != nil {
 		return nil, err
 	}
@@ -78,7 +78,7 @@ func (c *Client) ProjectRoot() string {
 	return c.cfg.ProjectRoot
 }
 
-// StoreLocation returns the full path to the underlying vector store database.
+// StoreLocation returns the full path to the underlying database.
 //
 // This path is determined during client initialization and points to the
 // persisted index file used for semantic search operations.
@@ -101,9 +101,9 @@ func (c *Client) IndexStatus(ctx context.Context) (IndexStatus, error) {
 	switch {
 	case err == nil:
 		return IndexOK, nil
-	case errors.Is(err, vector.ErrNotIndexed):
+	case errors.Is(err, store.ErrNotIndexed):
 		return IndexMissing, nil
-	case errors.Is(err, vector.ErrReindexRequired):
+	case errors.Is(err, store.ErrReindexRequired):
 		return IndexStale, nil
 	default:
 		return IndexOK, err

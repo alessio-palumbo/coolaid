@@ -2,7 +2,7 @@ package indexer
 
 import (
 	"coolaid/internal/llm"
-	"coolaid/internal/vector"
+	"coolaid/internal/store"
 	"log/slog"
 	"os"
 )
@@ -60,7 +60,7 @@ type ProgressFunc func(Progress)
 //
 // Build is intended to be used internally by higher-level APIs and does not
 // perform any output or rendering itself.
-func Build(client *llm.Client, store *vector.Store, logger *slog.Logger, opts IndexOptions, onProgress ProgressFunc) error {
+func Build(client *llm.Client, store *store.Store, logger *slog.Logger, opts IndexOptions, onProgress ProgressFunc) error {
 	ignore, err := LoadIgnore(store.ProjectRoot, opts.IgnorePatterns)
 	if err != nil {
 		return err
