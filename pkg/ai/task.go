@@ -49,8 +49,10 @@ type TaskStatus struct {
 }
 
 type Target struct {
-	File     string
-	Function string
+	File      string
+	Function  string
+	StartLine int
+	EndLine   int
 }
 
 func (t Target) validate() error {
@@ -362,7 +364,7 @@ func (c *Client) runTargetTask(ctx context.Context, target Target, prompt string
 		Structured:     taskCfg.prompt.structuredOutput,
 	}
 	renderedPrompt, err := prompts.Render(
-		pConfig.WithTarget(target.File, target.Function, extractTarget(data, target.Function)),
+		pConfig.WithTarget(target.File, target.Function, extractTarget(data, target)),
 		prompt, results...,
 	)
 	fmt.Println(renderedPrompt)
@@ -488,40 +490,44 @@ func isSupportedLanguage(path string) bool {
 	return false
 }
 
-// extractTarget returns either the full file content or a specific function body.
-//
-// If fn is empty, the full content is returned.
-// If fn is not found, it falls back to the full content.
-func extractTarget(src []byte, fn string) string {
-	if fn == "" {
-		return string(src)
+// extractTarget returns a slice of the source based on Target.
+// Priority: range > function > full file.
+func extractTarget(src []byte, t Target) string {
+	// Range-based extraction (line range)
+	if t.StartLine > 0 && t.EndLine > 0 {
+		lines := strings.Split(string(src), "\n")
+
+		// clamp bounds
+		start := max(t.StartLine-1, 0)
+		end := min(t.EndLine, len(lines))
+
+		return strings.Join(lines[start:end], "\n")
 	}
 
-	fset := token.NewFileSet()
-	file, err := parser.ParseFile(fset, "", src, parser.ParseComments)
-	if err != nil {
-		return string(src) // fallback
+	// Function-based extraction
+	if t.Function != "" {
+		// TODO support extraction for other languages through treesitter.
+		fset := token.NewFileSet()
+		file, err := parser.ParseFile(fset, "", src, parser.ParseComments)
+		if err == nil {
+			for _, decl := range file.Decls {
+				f, ok := decl.(*ast.FuncDecl)
+				if !ok || f.Name.Name != t.Function {
+					continue
+				}
+
+				start := fset.Position(f.Pos()).Offset
+				if f.Doc != nil {
+					start = fset.Position(f.Doc.Pos()).Offset
+				}
+				end := fset.Position(f.End()).Offset
+
+				return string(src[start:end])
+			}
+		}
 	}
 
-	for _, decl := range file.Decls {
-		f, ok := decl.(*ast.FuncDecl)
-		if !ok {
-			continue
-		}
-
-		if f.Name.Name != fn {
-			continue
-		}
-
-		start := fset.Position(f.Pos()).Offset
-		if f.Doc != nil {
-			start = fset.Position(f.Doc.Pos()).Offset
-		}
-		end := fset.Position(f.End()).Offset
-		return string(src[start:end])
-	}
-
-	// fallback if function not found
+	// Fallback: full file
 	return string(src)
 }
 
