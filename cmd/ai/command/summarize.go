@@ -10,13 +10,17 @@ import (
 
 func SummarizeCommand(client *ai.Client, sw *spinner.StreamWriter) *cli.Command {
 	return &cli.Command{
-		Name:  "summarize",
-		Usage: "summarize a file",
+		Name:      "summarize",
+		Usage:     "summarize a file",
+		ArgsUsage: "<file>",
 		Action: func(c *cli.Context) error {
-			file := c.Args().First()
+			target, err := parseTarget(c)
+			if err != nil {
+				return err
+			}
 
 			return spinner.WrapError(sw, func() error {
-				if err := client.Summarize(c.Context, file); err != nil {
+				if err := client.Summarize(c.Context, target.File); err != nil {
 					return err
 				}
 				fmt.Println()

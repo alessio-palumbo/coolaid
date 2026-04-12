@@ -11,8 +11,9 @@ import (
 
 func QueryCommand(client *ai.Client, sw *spinner.StreamWriter) *cli.Command {
 	return &cli.Command{
-		Name:  "query",
-		Usage: "ask a question over your indexed code",
+		Name:      "query",
+		Usage:     "ask a question over your indexed code",
+		ArgsUsage: "<prompt>",
 		Flags: []cli.Flag{
 			&cli.BoolFlag{
 				Name:  "v",

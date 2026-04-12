@@ -3,6 +3,7 @@ package command
 import (
 	"coolaid/pkg/ai"
 	"coolaid/pkg/spinner"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -11,8 +12,9 @@ import (
 
 func EditCommand(client *ai.Client, sw *spinner.StreamWriter) *cli.Command {
 	return &cli.Command{
-		Name:  "edit",
-		Usage: "edit a file or a function",
+		Name:      "edit",
+		Usage:     "edit a file or a function",
+		ArgsUsage: "<file> <prompt>",
 		Flags: []cli.Flag{
 			&cli.StringFlag{
 				Name:  "fn",
@@ -25,11 +27,15 @@ func EditCommand(client *ai.Client, sw *spinner.StreamWriter) *cli.Command {
 			},
 		},
 		Action: func(c *cli.Context) error {
-			target := ai.Target{
-				File:     c.Args().First(),
-				Function: c.String("fn"),
+			target, err := parseTarget(c)
+			if err != nil {
+				return err
 			}
-			prompt := strings.Join(c.Args().Slice(), " ")
+
+			if c.NArg() < 2 {
+				return errors.New("expecting 2 arguments: <file> <prompt>")
+			}
+			prompt := strings.TrimSpace(strings.Join(c.Args().Tail(), " "))
 
 			ragMode := ai.RetrievalNone
 			if c.Bool("rag") {

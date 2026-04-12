@@ -17,8 +17,9 @@ const (
 
 func AskCommand(client *ai.Client, sw *spinner.StreamWriter) *cli.Command {
 	return &cli.Command{
-		Name:  "ask",
-		Usage: "ask the AI a question",
+		Name:      "ask",
+		Usage:     "ask the AI a question",
+		ArgsUsage: "<prompt>",
 		Flags: []cli.Flag{
 			&cli.BoolFlag{
 				Name:  "web",
@@ -31,7 +32,7 @@ func AskCommand(client *ai.Client, sw *spinner.StreamWriter) *cli.Command {
 			},
 		},
 		Action: func(c *cli.Context) error {
-			prompt := strings.Join(c.Args().Slice(), " ")
+			prompt := strings.TrimSpace(strings.Join(c.Args().Slice(), " "))
 			opts := ai.AskOptions{
 				UseWeb:      c.Bool("web"),
 				SearchLimit: withSearchLimit(c.Int("search-limit")),

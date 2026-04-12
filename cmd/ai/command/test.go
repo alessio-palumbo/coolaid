@@ -10,8 +10,9 @@ import (
 
 func TestCommand(client *ai.Client, sw *spinner.StreamWriter) *cli.Command {
 	return &cli.Command{
-		Name:  "test",
-		Usage: "generate tests for a file or function",
+		Name:      "test",
+		Usage:     "generate tests for a file or function",
+		ArgsUsage: "<file>",
 		Flags: []cli.Flag{
 			&cli.StringFlag{
 				Name:  "fn",
@@ -19,9 +20,9 @@ func TestCommand(client *ai.Client, sw *spinner.StreamWriter) *cli.Command {
 			},
 		},
 		Action: func(c *cli.Context) error {
-			target := ai.Target{
-				File:     c.Args().First(),
-				Function: c.String("fn"),
+			target, err := parseTarget(c)
+			if err != nil {
+				return err
 			}
 
 			result, err := spinner.Wrap(sw, func() (ai.TaskResult, error) {

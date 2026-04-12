@@ -10,8 +10,9 @@ import (
 
 func ExplainCommand(client *ai.Client, sw *spinner.StreamWriter) *cli.Command {
 	return &cli.Command{
-		Name:  "explain",
-		Usage: "explain a source file",
+		Name:      "explain",
+		Usage:     "explain a source file",
+		ArgsUsage: "<file>",
 		Flags: []cli.Flag{
 			&cli.StringFlag{
 				Name:  "fn",
@@ -19,9 +20,9 @@ func ExplainCommand(client *ai.Client, sw *spinner.StreamWriter) *cli.Command {
 			},
 		},
 		Action: func(c *cli.Context) error {
-			target := ai.Target{
-				File:     c.Args().First(),
-				Function: c.String("fn"),
+			target, err := parseTarget(c)
+			if err != nil {
+				return err
 			}
 
 			result, err := spinner.Wrap(sw, func() (ai.TaskResult, error) {

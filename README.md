@@ -154,15 +154,37 @@ whenever:
 | `query`     | Ask a question over your indexed code (RAG: retrieves top-K relevant chunks and generates an answer) |
 | `explain`   | Explain a piece of code or file                                                                      |
 | `test`      | Generate tests for a piece of code or file                                                           |
+| `edit`      | Edit a file or function according to a prompt                                                        |
 
----
+### Flags
+
+Flags must be specified **before positional arguments**.
+
+✅ Correct:
+
+```bash
+./ai ask -web -search_limit 5 “What is a mutex in Go?”
+./ai test -fn Foo main.go
+```
+
+❌ Incorrect:
+
+```bash
+./ai ask “What is a mutex in Go?” -web true
+./ai test main.go -fn Foo
+```
+
+Notes:
+
+- Positional arguments (e.g. `<file>`, `<prompt>`) come **after flags**
+- Prompts with spaces should be wrapped in quotes
 
 ## Examples
 
 ### Ask the AI a general question (LLM only)
 
 ```bash
-./ai ask "What is a mutex in Go?"
+./ai ask [-web] [-search_limit 5] "What is a mutex in Go?"
 ```
 
 - -web optional, performs a web search on the prompt (use DuckDuckGo html search)
@@ -183,29 +205,31 @@ whenever:
 ### Start a chat session (w RAG)
 
 ```bash
-./ai chat
+./ai query [-mode balanced] chat
 ```
+
+- -mode optional, specifies the mode to use for RAG: fast, balanced (default) or deep (use MMR)
 
 ### Search for code snippets (w RAG)
 
 ```bash
-./ai search "vector store embedding normalization"
+./ai search [-k 5] "vector store embedding normalization"
 ```
 
-- -k specifies the number of top chunks to retrieve (default: 5)
+- -k optional, specifies the number of top chunks to retrieve (default: 5)
 
 ### Query the codebase using the LLM (w RAG)
 
 ```bash
-./ai query "How is the vector store implemented?" -mode balanced
+./ai query [-mode balanced] "How is the vector store implemented?"
 ```
 
-- -mode specifies the default mode use for RAG: fast, balanced or deep (use MMR)
+- -mode optional, specifies the mode to use for RAG: fast, balanced (default) or deep (use MMR)
 
 ### Explain file or function code (w RAG)
 
 ```bash
-./ai explain path/to/file.go [-fn functionName]
+./ai explain [-fn functionName] path/to/file.go
 ```
 
 - -fn optional, targets functionName only
@@ -213,7 +237,7 @@ whenever:
 ### Generate test for file or function (w RAG)
 
 ```bash
-./ai test path/to/file.go [-fn functionName]
+./ai test [-fn functionName] path/to/file.go
 ```
 
 - -fn optional, targets functionName only
@@ -221,7 +245,7 @@ whenever:
 ### Edit file or function (optional RAG)
 
 ```bash
-./ai edit path/to/file.go [-fn functionName]
+./ai edit [-fn functionName] path/to/file.go
 ```
 
 - -fn optional, targets functionName only

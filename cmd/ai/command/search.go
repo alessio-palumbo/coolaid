@@ -10,8 +10,9 @@ import (
 
 func SearchCommand(client *ai.Client) *cli.Command {
 	return &cli.Command{
-		Name:  "search",
-		Usage: "semantic search in indexed code",
+		Name:      "search",
+		Usage:     "semantic search in indexed code",
+		ArgsUsage: "<prompt>",
 		Flags: []cli.Flag{
 			&cli.IntFlag{
 				Name:  "k",
@@ -25,7 +26,7 @@ func SearchCommand(client *ai.Client) *cli.Command {
 			},
 		},
 		Action: func(c *cli.Context) error {
-			prompt := strings.Join(c.Args().Slice(), " ")
+			prompt := strings.TrimSpace(strings.Join(c.Args().Slice(), " "))
 
 			result, err := client.Search(c.Context, prompt, ai.WithTopK(c.Int("k")), ai.WithMMR(c.Bool("mmr")))
 			if err != nil {
