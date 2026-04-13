@@ -89,6 +89,33 @@ func NewClient(model, embeddingModel string) (*Client, error) {
 	return client, nil
 }
 
+func (c *Client) Generate(prompt string) (string, error) {
+	reqBody := generateRequest{
+		Prompt: prompt,
+		Model:  c.LLMModel,
+		Stream: false,
+	}
+	data, err := json.Marshal(reqBody)
+	if err != nil {
+		return "", err
+	}
+
+	resp, err := c.post(generateEndpoint, data)
+	if err != nil {
+		return "", err
+	}
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("llm returned status %d", resp.StatusCode)
+	}
+	defer resp.Body.Close()
+
+	var chunk generateResponse
+	if err := json.NewDecoder(resp.Body).Decode(&chunk); err != nil {
+		return "", err
+	}
+	return chunk.Response, nil
+}
+
 func (c *Client) GenerateStream(prompt string, writer io.Writer) error {
 	reqBody := generateRequest{
 		Prompt: prompt,

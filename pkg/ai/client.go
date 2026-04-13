@@ -3,6 +3,7 @@ package ai
 import (
 	"context"
 	"coolaid/internal/llm"
+	"coolaid/internal/llm/memory"
 	"coolaid/internal/store"
 	"errors"
 	"io"
@@ -25,6 +26,15 @@ const (
 	IndexStale
 )
 
+// Memory defines the interface for asynchronous project memory management.
+//
+// It accepts interaction inputs for background processing and supports
+// graceful shutdown of any internal workers.
+type Memory interface {
+	Capture(w io.Writer, in memory.Input, fn func(w io.Writer) error) error
+	Close()
+}
+
 // Client is the main entry point for interacting with the indexing
 // and querying system.
 type Client struct {
@@ -32,6 +42,7 @@ type Client struct {
 	llm   *llm.Client
 	store *store.Store
 
+	memory Memory
 	writer io.Writer
 }
 
@@ -60,6 +71,7 @@ func NewClient(cfg *Config, writer io.Writer) (*Client, error) {
 		cfg:    cfg,
 		llm:    llmClient,
 		store:  store,
+		memory: memory.NewService(store, llmClient),
 		writer: writer,
 	}, nil
 }
@@ -68,6 +80,7 @@ func NewClient(cfg *Config, writer io.Writer) (*Client, error) {
 //
 // It should be called when the Client is no longer needed.
 func (c *Client) Close() error {
+	c.memory.Close()
 	return c.store.Close()
 }
 
