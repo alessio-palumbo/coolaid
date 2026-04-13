@@ -1,6 +1,7 @@
 package store
 
 import (
+	"context"
 	"database/sql"
 	"testing"
 	"time"
@@ -148,6 +149,31 @@ func TestValidateIndex(t *testing.T) {
 		assert.NoError(t, err)
 		require.ErrorIs(t, s.ValidateIndex(), ErrReindexRequired)
 	})
+}
+
+func TestGetMemory(t *testing.T) {
+	store, _ := newTestStore(t)
+
+	got, err := store.GetMemory(context.Background())
+	assert.NoError(t, err)
+	assert.Equal(t, "", got.ProjectSummary)
+	assert.Equal(t, []string{}, got.Topics)
+	assert.Equal(t, []string{}, got.Preferences)
+}
+
+func TestSaveMemory(t *testing.T) {
+	store, _ := newTestStore(t)
+	want := Memory{
+		ProjectSummary: "test summary",
+		Topics:         []string{"rag"},
+		Preferences:    []string{"concise"},
+	}
+	assert.NoError(t, store.SaveMemory(context.Background(), want))
+	got, err := store.GetMemory(context.Background())
+	assert.NoError(t, err)
+	assert.Equal(t, want.ProjectSummary, got.ProjectSummary)
+	assert.Equal(t, want.Topics, got.Topics)
+	assert.Equal(t, want.Preferences, got.Preferences)
 }
 
 func TestSaveLoad(t *testing.T) {

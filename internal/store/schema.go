@@ -42,4 +42,14 @@ const (
 		updated_at TEXT
 	    );
 	`
+
+	createMemorySchema = `
+	    CREATE TABLE IF NOT EXISTS memory (
+		id INTEGER PRIMARY KEY CHECK (id = 1),
+		project_summary TEXT NOT NULL DEFAULT '',
+		topics TEXT NOT NULL DEFAULT '[]',        -- JSON: stable themes
+		preferences TEXT NOT NULL DEFAULT '[]',   -- JSON: user prefs / style
+		updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+	    );
+	`
 )

@@ -2,8 +2,10 @@ package store
 
 import (
 	"bytes"
+	"context"
 	"database/sql"
 	"encoding/binary"
+	"encoding/json"
 	"fmt"
 	"time"
 )
@@ -215,6 +217,54 @@ func (s *Store) ValidateIndex() error {
 	return nil
 }
 
+// GetMemory returns the current project memory snapshot.
+// Assumes a single row (id = 1) exists, initialized at DB setup.
+func (s *Store) GetMemory(ctx context.Context) (Memory, error) {
+	var m Memory
+	var topicsJSON, prefsJSON string
+
+	row := s.db.QueryRowContext(ctx, `
+		SELECT project_summary, topics, preferences, updated_at
+		FROM memory
+		WHERE id = 1
+	`)
+
+	err := row.Scan(&m.ProjectSummary, &topicsJSON, &prefsJSON, &m.UpdatedAt)
+	if err == sql.ErrNoRows {
+		return Memory{}, nil // empty memory
+	}
+	if err != nil {
+		return Memory{}, err
+	}
+
+	_ = json.Unmarshal([]byte(topicsJSON), &m.Topics)
+	_ = json.Unmarshal([]byte(prefsJSON), &m.Preferences)
+
+	return m, nil
+}
+
+// SaveMemory persists the updated project memory.
+// Performs an UPDATE on the single memory row (id = 1).
+func (s *Store) SaveMemory(ctx context.Context, m Memory) error {
+	topicsJSON, err := json.Marshal(m.Topics)
+	if err != nil {
+		return err
+	}
+
+	prefsJSON, err := json.Marshal(m.Preferences)
+	if err != nil {
+		return err
+	}
+
+	_, err = s.db.ExecContext(ctx, `
+		UPDATE memory
+		SET project_summary = ?, topics = ?, preferences = ?, updated_at = ?
+		WHERE id = 1
+	`, m.ProjectSummary, string(topicsJSON), string(prefsJSON), s.now().Format(time.RFC3339),
+	)
+	return err
+}
+
 // loadSummary retrieves the repository summary.
 func (s *Store) loadSummary() (string, error) {
 	var summary string
@@ -231,6 +281,9 @@ func (s *Store) loadSummary() (string, error) {
 // init initialise the DB creating tables if they do not exist.
 func (s *Store) init() error {
 	if err := s.ensureMetadata(); err != nil {
+		return err
+	}
+	if err := s.ensureMemory(); err != nil {
 		return err
 	}
 
@@ -266,6 +319,18 @@ func (s *Store) resetMetaTable() error {
 		return err
 	}
 	_, err = s.db.Exec(createMetaSchema)
+	return err
+}
+
+func (s *Store) ensureMemory() error {
+	if _, err := s.db.Exec(createMemorySchema); err != nil {
+		return err
+	}
+
+	_, err := s.db.Exec(`
+		INSERT OR IGNORE INTO memory (id, project_summary, topics, preferences)
+		VALUES (1, '', '[]', '[]');
+	`)
 	return err
 }
 

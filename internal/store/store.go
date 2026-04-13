@@ -52,6 +52,18 @@ type Store struct {
 	Summary     string
 }
 
+// Memory is the persisted, compact representation of project-level context.
+//
+// It evolves over time based on extracted signals from user interactions
+// and is used to improve future LLM responses with stable intent, topics,
+// and preferences.
+type Memory struct {
+	ProjectSummary string
+	Topics         []string
+	Preferences    []string
+	UpdatedAt      time.Time
+}
+
 // NewStore creates and initializes a Store backed by SQLite.
 // It opens the database, ensures the required tables exist, and loads
 // the stored embeddings into memory so they can be searched efficiently.
