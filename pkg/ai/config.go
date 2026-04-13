@@ -87,6 +87,15 @@ type Config struct {
 	// concurrency predictable and safe for I/O-bound workloads.
 	IndexMaxWorkers int
 
+	// DisableMemory disables the persistent memory system.
+	//
+	// When set to true, no project-level memory will be captured, extracted, or stored.
+	// The system will run normally, but memory-related processing is replaced with no-op behavior.
+	//
+	// When enabled (default behavior), memory updates are processed asynchronously
+	// and do not block primary LLM output execution.
+	DisableMemory bool
+
 	// Logger is used for internal logging.
 	//
 	// If nil, a no-op logger is used by default to avoid panics.

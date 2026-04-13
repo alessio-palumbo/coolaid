@@ -7,6 +7,7 @@ import (
 	"coolaid/internal/store"
 	"errors"
 	"io"
+	"time"
 )
 
 // IndexStatus represents the current state of the index.
@@ -32,7 +33,7 @@ const (
 // graceful shutdown of any internal workers.
 type Memory interface {
 	Capture(w io.Writer, in memory.Input, fn func(w io.Writer) error) error
-	Close()
+	Close(ctx context.Context)
 }
 
 // Client is the main entry point for interacting with the indexing
@@ -67,11 +68,18 @@ func NewClient(cfg *Config, writer io.Writer) (*Client, error) {
 		return nil, err
 	}
 
+	var memSvc Memory
+	if cfg.DisableMemory {
+		memSvc = memory.NewNoop()
+	} else {
+		memSvc = memory.NewService(store, llmClient)
+	}
+
 	return &Client{
 		cfg:    cfg,
 		llm:    llmClient,
 		store:  store,
-		memory: memory.NewService(store, llmClient),
+		memory: memSvc,
 		writer: writer,
 	}, nil
 }
@@ -80,7 +88,10 @@ func NewClient(cfg *Config, writer io.Writer) (*Client, error) {
 //
 // It should be called when the Client is no longer needed.
 func (c *Client) Close() error {
-	c.memory.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	c.memory.Close(ctx)
+
 	return c.store.Close()
 }
 

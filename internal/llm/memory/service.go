@@ -115,9 +115,9 @@ func (s *service) Capture(w io.Writer, in Input, fn func(w io.Writer) error) err
 
 // Close gracefully shuts down the memory queue and waits for
 // any in-flight memory updates to complete.
-func (s *service) Close() {
+func (s *service) Close(ctx context.Context) {
 	if s.queue != nil {
-		s.queue.close()
+		s.queue.close(ctx)
 	}
 }
 

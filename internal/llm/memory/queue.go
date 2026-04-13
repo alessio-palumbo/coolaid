@@ -27,9 +27,22 @@ func newQueue(s *service) *queue {
 	return q
 }
 
-func (q *queue) close() {
+func (q *queue) close(ctx context.Context) error {
 	close(q.ch)
-	q.wg.Wait()
+
+	done := make(chan struct{})
+
+	go func() {
+		q.wg.Wait()
+		close(done)
+	}()
+
+	select {
+	case <-done:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
 }
 
 func (q *queue) Enqueue(in Input) {
