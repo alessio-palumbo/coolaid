@@ -52,4 +52,12 @@ const (
 		updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 	    );
 	`
+
+	createMemoryQueueSchema = `
+	    CREATE TABLE IF NOT EXISTS memory_queue (
+		id TEXT PRIMARY KEY,
+		payload TEXT NOT NULL,
+		created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+	    );
+	`
 )

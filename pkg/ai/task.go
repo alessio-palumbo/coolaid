@@ -173,6 +173,16 @@ func (c *Client) Ask(ctx context.Context, prompt string, opts AskOptions) error 
 	return c.llm.GenerateStream(prompt, c.writer)
 }
 
+// FlushMemory processes all pending memory queue items.
+//
+// It loads persisted interactions, runs extraction, updates the memory store,
+// and removes successfully processed entries. It returns the number of items
+// successfully processed. Processing is best-effort and may take time depending
+// on LLM latency.
+func (c *Client) FlushMemory(ctx context.Context) (int, error) {
+	return c.memory.FlushMemory(ctx)
+}
+
 // Summarize generates a summary of the given file.
 //
 // The file content is passed directly to the LLM without retrieval.

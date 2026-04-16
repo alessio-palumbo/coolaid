@@ -4,17 +4,18 @@
 // It extracts durable signals from user interactions (intent, preferences,
 // and project context) using an LLM, then stores a compact evolving
 // representation in SQLite.
-//
-// Memory updates are performed asynchronously via a background queue
-// and are best-effort (non-blocking, non-critical path).
 package memory
 
 import (
 	"context"
 	"coolaid/internal/store"
 	"encoding/json"
+	"errors"
 	"io"
+	"log/slog"
 	"strings"
+
+	"github.com/google/uuid"
 )
 
 // Input represents a single interaction used for memory extraction.
@@ -22,13 +23,9 @@ import (
 // It combines:
 //   - the user's prompt
 //   - the assistant's response
-//   - any retrieved RAG context
-//   - the current persisted memory snapshot (as a string)
 type Input struct {
-	UserInput        string
-	AssistantOutput  string
-	RetrievedContext string
-	CurrentMemory    string
+	UserInput       string `json:"user_input"`
+	AssistantOutput string `json:"assistant_output"`
 }
 
 // extraction represents the structured delta produced by the LLM.
@@ -48,6 +45,10 @@ type extraction struct {
 type Store interface {
 	GetMemory(ctx context.Context) (store.Memory, error)
 	SaveMemory(ctx context.Context, m store.Memory) error
+
+	GetMemoryQueue(ctx context.Context) ([]store.MemoryQueueItem, error)
+	SaveMemoryQueue(ctx context.Context, in store.MemoryQueueItem) error
+	DeleteMemoryQueue(ctx context.Context, id string) error
 }
 
 type LLM interface {
@@ -57,71 +58,99 @@ type LLM interface {
 // Service orchestrates project memory extraction and persistence.
 //
 // It:
-//   - collects interaction data (user input, assistant output, context)
+//   - captures interaction data (assistant output)
+//   - persists raw interactions for later processing
 //   - retrieves current memory snapshot from storage
 //   - runs LLM-based extraction to identify meaningful updates
 //   - merges updates into existing memory state
 //   - persists the updated memory
 //
-// Memory updates are queued asynchronously and processed in the background
-// to avoid blocking CLI execution.
+// Memory updates are not processed during Capture. Instead, they are
+// persisted and processed later via FlushMemory.
 type service struct {
 	store Store
 	llm   LLM
-	queue *queue
 }
 
 // NewService creates a new memory service instance.
 //
 // It wires together:
-//   - persistent store (SQLite-backed memory)
+//   - persistent store (SQLite-backed memory and queue)
 //   - LLM-based extractor for memory updates
-//   - internal async queue for non-blocking processing
 //
-// The returned service immediately starts a background worker
-// to process memory updates asynchronously.
+// Memory processing is triggered explicitly via FlushMemory.
 func NewService(store Store, llm LLM) *service {
 	s := &service{
 		store: store,
 		llm:   llm,
 	}
-	s.queue = newQueue(s)
 	return s
 }
 
 // Capture runs a streaming operation while capturing its output.
 //
 // The output is written to the provided writer AND buffered internally.
-// After successful completion, the captured output is attached to the
-// memory input and enqueued for asynchronous extraction.
+// After successful completion, the captured output is persisted to the
+// memory queue for later processing.
 //
-// This is the primary integration point between LLM streaming and memory
-// persistence.
-func (s *service) Capture(w io.Writer, in Input, fn func(w io.Writer) error) error {
+// This method is non-blocking with respect to memory updates. Extraction
+// and persistence of memory updates are deferred to FlushMemory.
+func (s *service) Capture(w io.Writer, userPrompt string, fn func(w io.Writer) error) error {
 	tw := &teeWriter{w: w}
 
 	if err := fn(tw); err != nil {
 		return err
 	}
-	if s.queue == nil {
-		return nil
-	}
 
-	in.AssistantOutput = tw.String()
-	s.queue.Enqueue(in)
-
+	s.storeToPersistentQueue(context.Background(), Input{
+		UserInput:       userPrompt,
+		AssistantOutput: tw.String(),
+	})
 	return nil
 }
 
-// Close gracefully shuts down the memory queue and waits for
-// any in-flight memory updates to complete.
-func (s *service) Close(ctx context.Context) {
-	if s.queue != nil {
-		s.queue.close(ctx)
+// FlushMemory processes all pending memory queue items.
+//
+// It:
+//   - loads persisted interactions from the memory queue
+//   - reconstructs inputs for memory extraction
+//   - runs LLM-based extraction and updates the memory store
+//   - deletes successfully processed items from the queue
+//
+// It returns the number of items successfully processed.
+// Processing is best-effort: failures are logged and skipped,
+// allowing items to be retried on subsequent invocations.
+//
+// This operation may take time depending on LLM latency.
+func (s *service) FlushMemory(ctx context.Context) (int, error) {
+	items, err := s.store.GetMemoryQueue(ctx)
+	if err != nil {
+		slog.Warn("[memory] failed to load queue", slog.String("error", err.Error()))
+		return 0, err
 	}
+
+	var processed int
+	for _, it := range items {
+		in, err := fromQueueItem(it)
+		if err != nil {
+			slog.Warn("[memory] failed to parse persisted queue item", slog.String("error", err.Error()))
+			continue
+		}
+
+		if err := s.extractAndUpdate(ctx, in); err != nil {
+			continue // retry later
+		}
+
+		if err := s.store.DeleteMemoryQueue(ctx, it.ID); err != nil {
+			slog.Warn("[memory] failed to delete queue", slog.String("error", err.Error()))
+		}
+		processed++
+	}
+
+	return processed, nil
 }
 
-// ExtractAndUpdate performs a full memory update cycle:
+// extractAndUpdate performs a full memory update cycle:
 //
 //  1. Loads current project memory from store
 //  2. Builds enriched input context
@@ -136,18 +165,23 @@ func (s *service) extractAndUpdate(ctx context.Context, in Input) error {
 		return err
 	}
 
-	in.CurrentMemory = toMemoryString(current)
-	ex, err := s.extract(ctx, in)
+	ex, err := s.extract(ctx, in, current)
 	if err != nil {
 		return err
 	}
 
 	merged := merge(current, ex)
-	return s.store.SaveMemory(ctx, merged)
+	err = s.store.SaveMemory(ctx, merged)
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
-func (s *service) extract(ctx context.Context, in Input) (extraction, error) {
-	prompt, err := buildPrompt(in)
+// extract builds a prompt from the input and invokes the LLM to
+// generate a structured memory update, which is then parsed.
+func (s *service) extract(ctx context.Context, in Input, mem store.Memory) (extraction, error) {
+	prompt, err := buildPrompt(in, mem)
 	if err != nil {
 		return extraction{}, err
 	}
@@ -160,10 +194,39 @@ func (s *service) extract(ctx context.Context, in Input) (extraction, error) {
 	return parseExtraction(out)
 }
 
+// storeToPersistentQueue serializes and stores an input for later
+// memory processing. Failures are logged and ignored.
+func (s *service) storeToPersistentQueue(ctx context.Context, in Input) {
+	it, err := toQueueItem(in)
+	if err != nil {
+		slog.Warn("[memory] failed to convert Input", slog.String("error", err.Error()))
+	}
+	if err := s.store.SaveMemoryQueue(ctx, it); err != nil {
+		slog.Warn("[memory] failed to store queue", slog.String("error", err.Error()))
+	}
+}
+
 func parseExtraction(s string) (extraction, error) {
 	var ex extraction
-	err := json.Unmarshal([]byte(s), &ex)
+
+	jsonStr := extractJSON(s)
+	if jsonStr == "" {
+		return ex, errors.New("no JSON found in response")
+	}
+
+	err := json.Unmarshal([]byte(jsonStr), &ex)
 	return ex, err
+}
+
+func extractJSON(s string) string {
+	start := strings.Index(s, "{")
+	end := strings.LastIndex(s, "}")
+
+	if start == -1 || end == -1 || end < start {
+		return ""
+	}
+
+	return s[start : end+1]
 }
 
 func toMemoryString(m store.Memory) string {
@@ -192,4 +255,21 @@ func toMemoryString(m store.Memory) string {
 	}
 
 	return strings.TrimSpace(b.String())
+}
+
+func toQueueItem(in Input) (store.MemoryQueueItem, error) {
+	b, err := json.Marshal(in)
+	if err != nil {
+		return store.MemoryQueueItem{}, err
+	}
+	return store.MemoryQueueItem{
+		ID:      uuid.NewString(),
+		Payload: b,
+	}, nil
+}
+
+func fromQueueItem(item store.MemoryQueueItem) (Input, error) {
+	var in Input
+	err := json.Unmarshal(item.Payload, &in)
+	return in, err
 }

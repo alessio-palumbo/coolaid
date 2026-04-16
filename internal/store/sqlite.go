@@ -265,6 +265,57 @@ func (s *Store) SaveMemory(ctx context.Context, m Memory) error {
 	return err
 }
 
+// MemoryQueueItem represents a persisted memory processing job stored in the database.
+// Payload contains the serialized Input used to reconstruct the memory update task.
+type MemoryQueueItem struct {
+	ID      string
+	Payload []byte
+}
+
+// GetMemoryQueue returns all pending memory queue items ordered by creation time.
+// These items represent unprocessed memory updates that must be handled on startup.
+func (s *Store) GetMemoryQueue(ctx context.Context) ([]MemoryQueueItem, error) {
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT id, payload FROM memory_queue ORDER BY created_at ASC`,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var items []MemoryQueueItem
+
+	for rows.Next() {
+		var it MemoryQueueItem
+		if err := rows.Scan(&it.ID, &it.Payload); err != nil {
+			return nil, err
+		}
+		items = append(items, it)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+// SaveMemoryQueue inserts a new memory queue item into persistent storage.
+// This is used to persist memory updates for later processing or recovery.
+func (s *Store) SaveMemoryQueue(ctx context.Context, in MemoryQueueItem) error {
+	_, err := s.db.ExecContext(ctx,
+		`INSERT INTO memory_queue (id, payload) VALUES (?, ?)`,
+		in.ID, in.Payload,
+	)
+	return err
+}
+
+// DeleteMemoryQueue removes a processed memory queue item by ID.
+// It is called after successful memory extraction and persistence.
+func (s *Store) DeleteMemoryQueue(ctx context.Context, id string) error {
+	_, err := s.db.ExecContext(ctx, `DELETE FROM memory_queue WHERE id = ?`, id)
+	return err
+}
+
 // loadSummary retrieves the repository summary.
 func (s *Store) loadSummary() (string, error) {
 	var summary string
@@ -280,14 +331,32 @@ func (s *Store) loadSummary() (string, error) {
 
 // init initialise the DB creating tables if they do not exist.
 func (s *Store) init() error {
+	if err := s.applyPragmas(); err != nil {
+		return err
+	}
 	if err := s.ensureMetadata(); err != nil {
 		return err
 	}
 	if err := s.ensureMemory(); err != nil {
 		return err
 	}
-
 	_, err := s.db.Exec(createSummarySchema)
+	return err
+}
+
+// applyPragmas configures SQLite connection settings required for
+// concurrent access across multiple processes.
+//
+// - journal_mode=WAL enables concurrent readers/writers and persists at DB level.
+// - busy_timeout prevents "database is locked" errors by waiting before failing.
+//
+// Note: busy_timeout is connection-specific and must be set on every DB open,
+// including subprocesses.
+func (s *Store) applyPragmas() error {
+	if _, err := s.db.Exec(`PRAGMA journal_mode=WAL;`); err != nil {
+		return err
+	}
+	_, err := s.db.Exec(`PRAGMA busy_timeout = 5000;`)
 	return err
 }
 
@@ -326,11 +395,15 @@ func (s *Store) ensureMemory() error {
 	if _, err := s.db.Exec(createMemorySchema); err != nil {
 		return err
 	}
-
 	_, err := s.db.Exec(`
 		INSERT OR IGNORE INTO memory (id, project_summary, topics, preferences)
 		VALUES (1, '', '[]', '[]');
 	`)
+	if err != nil {
+		return err
+	}
+
+	_, err = s.db.Exec(createMemoryQueueSchema)
 	return err
 }
 

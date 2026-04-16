@@ -1,12 +1,4 @@
-package memory
 
-import (
-	"bytes"
-	"coolaid/internal/store"
-	"text/template"
-)
-
-var memoryPrompt = `
 You are a memory extraction system for a developer CLI assistant.
 
 Your job is to update long-term PROJECT MEMORY based on the latest interaction.
@@ -95,34 +87,18 @@ This section is structured and authoritative.
 You will receive:
 
 USER_INPUT:
-{{ .UserInput }}
+How does memory work?
 
 ASSISTANT_OUTPUT:
-{{ .AssistantOutput }}
+Memory is stored and updated asynchronously.
 
 CURRENT_PROJECT_MEMORY:
-{{ .CurrentMemory }}
-`
+PROJECT SUMMARY:
+Go CLI assistant for AI tasks
 
-var funcMap = template.FuncMap{
-	"add": func(a, b int) int { return a + b },
-}
+TOPICS:
+- memory
+- LLM
 
-func buildPrompt(in Input, mem store.Memory) (string, error) {
-	tmpl, err := template.New("memory").Funcs(funcMap).Parse(memoryPrompt)
-	if err != nil {
-		return "", err
-	}
-
-	data := map[string]any{
-		"CurrentMemory":   toMemoryString(mem),
-		"UserInput":       in.UserInput,
-		"AssistantOutput": in.AssistantOutput,
-	}
-
-	var buf bytes.Buffer
-	if err := tmpl.Execute(&buf, data); err != nil {
-		return "", err
-	}
-	return buf.String(), nil
-}
+PREFERENCES:
+- concise output

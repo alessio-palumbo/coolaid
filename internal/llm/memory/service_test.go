@@ -106,7 +106,8 @@ func (f fakeLLM) Generate(prompt string) (string, error) {
 }
 
 type fakeStore struct {
-	mem store.Memory
+	mem      store.Memory
+	memQueue []store.MemoryQueueItem
 }
 
 func (f *fakeStore) GetMemory(ctx context.Context) (store.Memory, error) {
@@ -114,5 +115,18 @@ func (f *fakeStore) GetMemory(ctx context.Context) (store.Memory, error) {
 }
 func (f *fakeStore) SaveMemory(ctx context.Context, m store.Memory) error {
 	f.mem = m
+	return nil
+}
+
+func (f *fakeStore) GetMemoryQueue(ctx context.Context) ([]store.MemoryQueueItem, error) {
+	return f.memQueue, nil
+}
+
+func (f *fakeStore) SaveMemoryQueue(ctx context.Context, in store.MemoryQueueItem) error {
+	f.memQueue = append(f.memQueue, in)
+	return nil
+}
+
+func (f *fakeStore) DeleteMemoryQueue(ctx context.Context, id string) error {
 	return nil
 }
