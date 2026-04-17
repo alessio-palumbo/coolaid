@@ -21,7 +21,10 @@ const (
 	defaultFrameInterval = 100 * time.Millisecond
 )
 
-var defaultFrames = []string{"|", "/", "-", "\\"}
+var (
+	defaultMessage = " Thinking"
+	defaultFrames  = []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
+)
 
 // Option configures a StreamWriter.
 type Option func(sw *StreamWriter)
@@ -38,6 +41,14 @@ func WithStartDelay(d time.Duration) Option {
 func WithFrameInterval(d time.Duration) Option {
 	return func(sw *StreamWriter) {
 		sw.frameInterval = d
+	}
+}
+
+// WithMessage sets the message used for the spinner.
+// If empty, a default set is used.
+func WithMessage(msg string) Option {
+	return func(sw *StreamWriter) {
+		sw.message = msg
 	}
 }
 
@@ -59,6 +70,7 @@ func WithFrames(frames []string) Option {
 type StreamWriter struct {
 	w io.Writer
 
+	message       string
 	frames        []string
 	startDelay    time.Duration
 	frameInterval time.Duration
@@ -73,6 +85,8 @@ type StreamWriter struct {
 // New creates a new StreamWriter wrapping the provided io.Writer.
 //
 // Optional configuration can be provided via functional options.
+// Sensible defaults are applied for delay, frame interval, message,
+// and frames when not explicitly set.
 func New(w io.Writer, opts ...Option) *StreamWriter {
 	sw := &StreamWriter{
 		w:             w,
@@ -84,6 +98,9 @@ func New(w io.Writer, opts ...Option) *StreamWriter {
 		o(sw)
 	}
 
+	if sw.message == "" {
+		sw.message = defaultMessage
+	}
 	if len(sw.frames) == 0 {
 		sw.frames = defaultFrames
 	}
@@ -164,7 +181,7 @@ func (sw *StreamWriter) startSpinner() {
 				sw.spinnerWrite("\r\033[K")
 				return
 			case <-ticker.C:
-				sw.spinnerWrite("\r" + sw.frames[i%len(sw.frames)] + " Thinking...")
+				sw.spinnerWrite("\r" + sw.frames[i%len(sw.frames)] + " " + sw.message)
 				i = (i + 1) % len(sw.frames)
 			}
 		}

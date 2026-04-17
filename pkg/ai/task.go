@@ -13,6 +13,7 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
+	"io"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -170,7 +171,10 @@ func (c *Client) Ask(ctx context.Context, prompt string, opts AskOptions) error 
 			return err
 		}
 	}
-	return c.llm.GenerateStream(prompt, c.writer)
+
+	return c.memory.Capture(c.writer, prompt, func(w io.Writer) error {
+		return c.llm.GenerateStream(prompt, w)
+	})
 }
 
 // FlushMemory processes all pending memory queue items.
@@ -283,7 +287,9 @@ func (c *Client) Query(ctx context.Context, prompt string, opts ...TaskOption) (
 		return TaskResult{}, err
 	}
 
-	return TaskResult{}, c.llm.GenerateStream(renderedPrompt, c.writer)
+	return TaskResult{}, c.memory.Capture(c.writer, prompt, func(w io.Writer) error {
+		return c.llm.GenerateStream(renderedPrompt, c.writer)
+	})
 }
 
 // Explain analyzes a target and generates an explanation using

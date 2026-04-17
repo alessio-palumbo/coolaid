@@ -4,6 +4,7 @@ import (
 	"context"
 	"coolaid/internal/llm"
 	"coolaid/internal/prompts"
+	"io"
 )
 
 // ChatSession represents a stateful conversation with the LLM.
@@ -67,14 +68,16 @@ func (s *ChatSession) Send(ctx context.Context, msg string) error {
 		return err
 	}
 
-	resp, err := s.client.llm.ChatStream(append(s.history[:len(s.history)-1], userMsg(prompt)), s.client.writer)
-	if err != nil {
-		return err
-	}
+	return s.client.memory.Capture(s.client.writer, msg, func(w io.Writer) error {
+		resp, err := s.client.llm.ChatStream(append(s.history[:len(s.history)-1], userMsg(prompt)), w)
+		if err != nil {
+			return err
+		}
 
-	// append assistant response
-	s.history = append(s.history, assistantMsg(resp))
-	return nil
+		// append assistant response
+		s.history = append(s.history, assistantMsg(resp))
+		return nil
+	})
 }
 
 // Reset clears the current history to start a brand new chat.

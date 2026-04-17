@@ -40,6 +40,7 @@ func main() {
 			command.FixCommand(client, sw),
 			command.RefactorCommand(client, sw),
 			command.CommentCommand(client, sw),
+			command.FlushMemoryCommand(client),
 		},
 	}
 
