@@ -8,28 +8,35 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestExtractAndUpdate(t *testing.T) {
+func TestFlushMemory(t *testing.T) {
 	testCases := map[string]struct {
-		input     Input
-		store     *fakeStore
-		llm       *fakeLLM
-		expectErr bool
-		expected  store.Memory
+		initialQueue []store.MemoryQueueItem
+		store        *fakeStore
+		llm          *fakeLLM
+		expectErr    bool
+		expected     store.Memory
+		expectedProc int
 	}{
 		"adds topic": {
-			input: Input{UserInput: "test"},
-			store: &fakeStore{mem: store.Memory{}},
+			initialQueue: []store.MemoryQueueItem{
+				{ID: "1", Payload: []byte(`{"UserInput":"test"}`)},
+			},
+			store: &fakeStore{
+				mem: store.Memory{},
+			},
 			llm: &fakeLLM{
 				resp: `{"topics_add":["rag"]}`,
 			},
 			expected: store.Memory{
 				Topics: []string{"rag"},
 			},
+			expectedProc: 1,
 		},
-
 		"adds preference and summary": {
-			input: Input{UserInput: "use short answers"},
-			store: &fakeStore{mem: store.Memory{}},
+			initialQueue: []store.MemoryQueueItem{
+				{ID: "1", Payload: []byte(`{"UserInput":"use short answers"}`)},
+			},
+			store: &fakeStore{},
 			llm: &fakeLLM{
 				resp: `{"preferences_add":["concise"],"summary_update":"user prefers concise responses"}`,
 			},
@@ -37,57 +44,75 @@ func TestExtractAndUpdate(t *testing.T) {
 				ProjectSummary: "user prefers concise responses",
 				Preferences:    []string{"concise"},
 			},
+			expectedProc: 1,
 		},
-
 		"merges existing memory": {
-			input: Input{UserInput: "more rag work"},
-			store: &fakeStore{mem: store.Memory{
-				Topics: []string{"rag"},
-			}},
+			initialQueue: []store.MemoryQueueItem{
+				{ID: "1", Payload: []byte(`{"UserInput":"more rag work"}`)},
+			},
+			store: &fakeStore{
+				mem: store.Memory{
+					Topics: []string{"rag"},
+				},
+			},
 			llm: &fakeLLM{
 				resp: `{"topics_add":["vector search"]}`,
 			},
 			expected: store.Memory{
 				Topics: []string{"rag", "vector search"},
 			},
+			expectedProc: 1,
 		},
-
 		"invalid json returns no change": {
-			input: Input{UserInput: "test"},
-			store: &fakeStore{mem: store.Memory{
-				Topics: []string{"existing"},
-			}},
+			initialQueue: []store.MemoryQueueItem{
+				{ID: "1", Payload: []byte(`NOT_JSON`)},
+			},
+			store: &fakeStore{
+				mem: store.Memory{
+					Topics: []string{"existing"},
+				},
+			},
 			llm: &fakeLLM{
 				resp: `NOT_JSON`,
 			},
-			expectErr: true,
 			expected: store.Memory{
 				Topics: []string{"existing"},
 			},
+			expectedProc: 0,
 		},
-
 		"empty extraction no-op": {
-			input: Input{UserInput: "test"},
-			store: &fakeStore{mem: store.Memory{
-				Topics: []string{"existing"},
-			}},
+			initialQueue: []store.MemoryQueueItem{
+				{ID: "1", Payload: []byte(`{"UserInput":"test"}`)},
+			},
+			store: &fakeStore{
+				mem: store.Memory{
+					Topics: []string{"existing"},
+				},
+			},
 			llm: &fakeLLM{
 				resp: `{}`,
 			},
 			expected: store.Memory{
 				Topics: []string{"existing"},
 			},
+			expectedProc: 1,
 		},
 	}
 
 	for name, tc := range testCases {
 		t.Run(name, func(t *testing.T) {
+			tc.store.memQueue = tc.initialQueue
+
 			s := NewService(tc.store, tc.llm)
-			if err := s.extractAndUpdate(context.Background(), tc.input); err != nil {
+
+			processed, err := s.FlushMemory(context.Background())
+			if err != nil {
 				if !tc.expectErr {
 					t.Fatal(err)
 				}
 			}
+
+			assert.Equal(t, tc.expectedProc, processed)
 
 			got, _ := tc.store.GetMemory(context.Background())
 			assert.Equal(t, tc.expected.ProjectSummary, got.ProjectSummary)
@@ -113,7 +138,7 @@ type fakeStore struct {
 func (f *fakeStore) GetMemory(ctx context.Context) (store.Memory, error) {
 	return f.mem, nil
 }
-func (f *fakeStore) SaveMemory(ctx context.Context, m store.Memory) error {
+func (f *fakeStore) CommitMemoryUpdate(ctx context.Context, m store.Memory, ids []string) error {
 	f.mem = m
 	return nil
 }
@@ -124,9 +149,5 @@ func (f *fakeStore) GetMemoryQueue(ctx context.Context) ([]store.MemoryQueueItem
 
 func (f *fakeStore) SaveMemoryQueue(ctx context.Context, in store.MemoryQueueItem) error {
 	f.memQueue = append(f.memQueue, in)
-	return nil
-}
-
-func (f *fakeStore) DeleteMemoryQueue(ctx context.Context, id string) error {
 	return nil
 }

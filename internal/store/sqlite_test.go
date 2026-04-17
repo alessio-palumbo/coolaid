@@ -161,19 +161,46 @@ func TestGetMemory(t *testing.T) {
 	assert.Equal(t, []string{}, got.Preferences)
 }
 
-func TestSaveMemory(t *testing.T) {
+func TestCommitMemoryUpdate(t *testing.T) {
 	store, _ := newTestStore(t)
-	want := Memory{
-		ProjectSummary: "test summary",
-		Topics:         []string{"rag"},
+
+	// seed initial memory
+	initial := Memory{
+		ProjectSummary: "old",
+		Topics:         []string{"old"},
+		Preferences:    []string{"verbose"},
+	}
+	assert.NoError(t, store.CommitMemoryUpdate(context.Background(), initial, nil))
+
+	// seed queue
+	assert.NoError(t, store.SaveMemoryQueue(context.Background(), MemoryQueueItem{ID: "a", Payload: []byte("payload a")}))
+	assert.NoError(t, store.SaveMemoryQueue(context.Background(), MemoryQueueItem{ID: "b", Payload: []byte("payload b")}))
+	assert.NoError(t, store.SaveMemoryQueue(context.Background(), MemoryQueueItem{ID: "c", Payload: []byte("payload c")}))
+
+	// updated memory
+	updated := Memory{
+		ProjectSummary: "new summary",
+		Topics:         []string{"go"},
 		Preferences:    []string{"concise"},
 	}
-	assert.NoError(t, store.SaveMemory(context.Background(), want))
-	got, err := store.GetMemory(context.Background())
+
+	err := store.CommitMemoryUpdate(context.Background(), updated, []string{"a", "b"})
 	assert.NoError(t, err)
-	assert.Equal(t, want.ProjectSummary, got.ProjectSummary)
-	assert.Equal(t, want.Topics, got.Topics)
-	assert.Equal(t, want.Preferences, got.Preferences)
+
+	// verify memory updated
+	gotMem, err := store.GetMemory(context.Background())
+	assert.NoError(t, err)
+
+	assert.Equal(t, updated.ProjectSummary, gotMem.ProjectSummary)
+	assert.Equal(t, updated.Topics, gotMem.Topics)
+	assert.Equal(t, updated.Preferences, gotMem.Preferences)
+
+	// verify queue state
+	items, err := store.GetMemoryQueue(context.Background())
+	assert.NoError(t, err)
+
+	assert.Len(t, items, 1)
+	assert.Equal(t, "c", items[0].ID)
 }
 
 func TestSaveLoad(t *testing.T) {

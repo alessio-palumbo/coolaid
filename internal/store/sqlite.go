@@ -7,6 +7,7 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 )
 
@@ -16,6 +17,13 @@ var (
 	ErrReindexRequired = fmt.Errorf("index is outdated: rebuild required")
 	ErrNotIndexed      = fmt.Errorf("not indexed: index must be built")
 )
+
+// MemoryQueueItem represents a persisted memory processing job stored in the database.
+// Payload contains the serialized Input used to reconstruct the memory update task.
+type MemoryQueueItem struct {
+	ID      string
+	Payload []byte
+}
 
 // ResetIndex resets the embeddings table and clears summary data from the DB.
 func (s *Store) ResetIndex() (err error) {
@@ -243,33 +251,34 @@ func (s *Store) GetMemory(ctx context.Context) (Memory, error) {
 	return m, nil
 }
 
-// SaveMemory persists the updated project memory.
-// Performs an UPDATE on the single memory row (id = 1).
-func (s *Store) SaveMemory(ctx context.Context, m Memory) error {
-	topicsJSON, err := json.Marshal(m.Topics)
+// CommitMemoryUpdate atomically persists the updated project memory
+// and removes successfully processed items from the memory queue.
+//
+// It ensures consistency by wrapping both operations in a single
+// database transaction:
+//   - updates the memory table
+//   - deletes processed queue items (if any)
+//
+// If any step fails, the transaction is rolled back.
+func (s *Store) CommitMemoryUpdate(ctx context.Context, m Memory, ids []string) error {
+	tx, err := s.db.Begin()
 	if err != nil {
 		return err
 	}
+	defer func() {
+		if err != nil {
+			tx.Rollback()
+		}
+	}()
 
-	prefsJSON, err := json.Marshal(m.Preferences)
-	if err != nil {
+	if err := s.saveMemory(ctx, tx, m); err != nil {
+		return err
+	}
+	if err := s.deleteMemoryQueueItems(ctx, tx, ids); err != nil {
 		return err
 	}
 
-	_, err = s.db.ExecContext(ctx, `
-		UPDATE memory
-		SET project_summary = ?, topics = ?, preferences = ?, updated_at = ?
-		WHERE id = 1
-	`, m.ProjectSummary, string(topicsJSON), string(prefsJSON), s.now().Format(time.RFC3339),
-	)
-	return err
-}
-
-// MemoryQueueItem represents a persisted memory processing job stored in the database.
-// Payload contains the serialized Input used to reconstruct the memory update task.
-type MemoryQueueItem struct {
-	ID      string
-	Payload []byte
+	return tx.Commit()
 }
 
 // GetMemoryQueue returns all pending memory queue items ordered by creation time.
@@ -309,10 +318,46 @@ func (s *Store) SaveMemoryQueue(ctx context.Context, in MemoryQueueItem) error {
 	return err
 }
 
-// DeleteMemoryQueue removes a processed memory queue item by ID.
-// It is called after successful memory extraction and persistence.
-func (s *Store) DeleteMemoryQueue(ctx context.Context, id string) error {
-	_, err := s.db.ExecContext(ctx, `DELETE FROM memory_queue WHERE id = ?`, id)
+// saveMemory persists the updated project memory.
+// Performs an UPDATE on the single memory row (id = 1).
+func (s *Store) saveMemory(ctx context.Context, tx *sql.Tx, m Memory) error {
+	topicsJSON, err := json.Marshal(m.Topics)
+	if err != nil {
+		return err
+	}
+
+	prefsJSON, err := json.Marshal(m.Preferences)
+	if err != nil {
+		return err
+	}
+
+	_, err = tx.ExecContext(ctx, `
+		UPDATE memory
+		SET project_summary = ?, topics = ?, preferences = ?, updated_at = ?
+		WHERE id = 1
+	`, m.ProjectSummary, string(topicsJSON), string(prefsJSON), s.now().Format(time.RFC3339),
+	)
+	return err
+}
+
+// deleteMemoryQueueItems deletes the given processed memory queue items by ID.
+func (s *Store) deleteMemoryQueueItems(ctx context.Context, tx *sql.Tx, ids []string) error {
+	if len(ids) < 1 {
+		return nil
+	}
+
+	placeholders := make([]string, len(ids))
+	args := make([]any, len(ids))
+
+	for i, id := range ids {
+		placeholders[i] = "?"
+		args[i] = id
+	}
+
+	_, err := tx.ExecContext(ctx,
+		"DELETE FROM memory_queue WHERE id IN ("+strings.Join(placeholders, ",")+")",
+		args...,
+	)
 	return err
 }
 

@@ -44,11 +44,10 @@ type extraction struct {
 
 type Store interface {
 	GetMemory(ctx context.Context) (store.Memory, error)
-	SaveMemory(ctx context.Context, m store.Memory) error
+	CommitMemoryUpdate(ctx context.Context, m store.Memory, ids []string) error
 
 	GetMemoryQueue(ctx context.Context) ([]store.MemoryQueueItem, error)
 	SaveMemoryQueue(ctx context.Context, in store.MemoryQueueItem) error
-	DeleteMemoryQueue(ctx context.Context, id string) error
 }
 
 type LLM interface {
@@ -115,11 +114,13 @@ func (s *service) Capture(w io.Writer, userPrompt string, fn func(w io.Writer) e
 //   - loads persisted interactions from the memory queue
 //   - reconstructs inputs for memory extraction
 //   - runs LLM-based extraction and updates the memory store
-//   - deletes successfully processed items from the queue
+//   - deletes successfully processed queue items (those that contributed to memory updates)
 //
 // It returns the number of items successfully processed.
 // Processing is best-effort: failures are logged and skipped,
 // allowing items to be retried on subsequent invocations.
+// Memory is updated incrementally per item; partial failures
+// do not roll back earlier updates.
 //
 // This operation may take time depending on LLM latency.
 func (s *service) FlushMemory(ctx context.Context) (int, error) {
@@ -128,55 +129,49 @@ func (s *service) FlushMemory(ctx context.Context) (int, error) {
 		slog.Warn("[memory] failed to load queue", slog.String("error", err.Error()))
 		return 0, err
 	}
+	if len(items) == 0 {
+		return 0, nil
+	}
+
+	mem, err := s.store.GetMemory(ctx)
+	if err != nil {
+		slog.Warn("[memory] failed to load memory", slog.String("error", err.Error()))
+		return 0, err
+	}
 
 	var processed int
+	var itemsIDs []string
 	for _, it := range items {
+		if ctx.Err() != nil {
+			break
+		}
+
 		in, err := fromQueueItem(it)
 		if err != nil {
-			slog.Warn("[memory] failed to parse persisted queue item", slog.String("error", err.Error()))
+			slog.Warn("[memory] failed to parse persisted queue item", slog.String("error", err.Error()), slog.Any("it", it))
 			continue
 		}
 
-		if err := s.extractAndUpdate(ctx, in); err != nil {
-			slog.Warn("[memory] failed to update memory", slog.String("error", err.Error()))
+		ex, err := s.extract(ctx, in, mem)
+		if err != nil {
+			slog.Warn("[memory] failed to extract memory", slog.String("id", it.ID), slog.String("error", err.Error()))
 			continue // retry later
 		}
 
-		if err := s.store.DeleteMemoryQueue(ctx, it.ID); err != nil {
-			slog.Warn("[memory] failed to delete queue", slog.String("error", err.Error()))
-		}
+		itemsIDs = append(itemsIDs, it.ID)
+		mem = merge(mem, ex)
 		processed++
 	}
 
+	if len(itemsIDs) == 0 {
+		return 0, nil
+	}
+
+	if err := s.store.CommitMemoryUpdate(ctx, mem, itemsIDs); err != nil {
+		slog.Warn("[memory] failed to commit memory", slog.Int("processed", len(itemsIDs)), slog.String("error", err.Error()))
+		return 0, err
+	}
 	return processed, nil
-}
-
-// extractAndUpdate performs a full memory update cycle:
-//
-//  1. Loads current project memory from store
-//  2. Builds enriched input context
-//  3. Uses LLM to extract structured memory updates
-//  4. Merges updates into existing memory
-//  5. Persists updated memory back to store
-//
-// Errors are propagated; memory updates are not retried automatically.
-func (s *service) extractAndUpdate(ctx context.Context, in Input) error {
-	current, err := s.store.GetMemory(ctx)
-	if err != nil {
-		return err
-	}
-
-	ex, err := s.extract(ctx, in, current)
-	if err != nil {
-		return err
-	}
-
-	merged := merge(current, ex)
-	err = s.store.SaveMemory(ctx, merged)
-	if err != nil {
-		return err
-	}
-	return nil
 }
 
 // extract builds a prompt from the input and invokes the LLM to
