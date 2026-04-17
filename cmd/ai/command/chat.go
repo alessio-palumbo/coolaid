@@ -1,14 +1,15 @@
 package command
 
 import (
+	"bufio"
+	"context"
 	"coolaid/pkg/ai"
 	"coolaid/pkg/spinner"
-	"bufio"
 	"fmt"
 	"os"
 	"strings"
 
-	"github.com/urfave/cli/v2"
+	"github.com/urfave/cli/v3"
 )
 
 func ChatCommand(client *ai.Client, sw *spinner.StreamWriter) *cli.Command {
@@ -24,7 +25,7 @@ func ChatCommand(client *ai.Client, sw *spinner.StreamWriter) *cli.Command {
 				DefaultText: string(ai.RetrievalFast),
 			},
 		},
-		Action: func(c *cli.Context) error {
+		Action: func(ctx context.Context, c *cli.Command) error {
 			session := client.NewChatSession(ai.WithRetrievalMode(ai.RetrievalMode(c.String("mode"))))
 			fmt.Println("Starting AI chat. Type 'exit' or Ctrl+C to quit.")
 
@@ -43,7 +44,7 @@ func ChatCommand(client *ai.Client, sw *spinner.StreamWriter) *cli.Command {
 				}
 
 				if err := spinner.WrapError(sw, func() error {
-					if err := session.Send(c.Context, input); err != nil {
+					if err := session.Send(ctx, input); err != nil {
 						return catchIndexError(err)
 					}
 					fmt.Println()

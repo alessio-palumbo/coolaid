@@ -1,11 +1,12 @@
 package command
 
 import (
+	"context"
 	"coolaid/pkg/ai"
 	"coolaid/pkg/spinner"
 	"fmt"
 
-	"github.com/urfave/cli/v2"
+	"github.com/urfave/cli/v3"
 )
 
 func FixCommand(client *ai.Client, sw *spinner.StreamWriter) *cli.Command {
@@ -28,7 +29,7 @@ func FixCommand(client *ai.Client, sw *spinner.StreamWriter) *cli.Command {
 				Usage: "use RAG for more context",
 			},
 		},
-		Action: func(c *cli.Context) error {
+		Action: func(ctx context.Context, c *cli.Command) error {
 			target, err := parseTarget(c)
 			if err != nil {
 				return err
@@ -39,7 +40,7 @@ func FixCommand(client *ai.Client, sw *spinner.StreamWriter) *cli.Command {
 				ragMode = ai.RetrievalBalanced
 			}
 			result, err := spinner.Wrap(sw, func() (ai.TaskResult, error) {
-				return client.Fix(c.Context, target, ai.WithRetrievalMode(ragMode))
+				return client.Fix(ctx, target, ai.WithRetrievalMode(ragMode))
 			})
 			if err != nil {
 				return catchIndexError(err)

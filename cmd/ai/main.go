@@ -1,17 +1,23 @@
 package main
 
 import (
+	"context"
 	"coolaid/cmd/ai/command"
 	"coolaid/cmd/ai/config"
 	"coolaid/pkg/ai"
 	"coolaid/pkg/spinner"
 	"log"
 	"os"
+	"os/signal"
+	"syscall"
 
-	"github.com/urfave/cli/v2"
+	"github.com/urfave/cli/v3"
 )
 
 func main() {
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
 	cfg, err := config.LoadOrCreate()
 	if err != nil {
 		log.Fatal(err)
@@ -24,7 +30,7 @@ func main() {
 	}
 	defer client.Close()
 
-	app := &cli.App{
+	cmd := &cli.Command{
 		Name:  "ai",
 		Usage: "AI powered developer assistant",
 		Commands: []*cli.Command{
@@ -44,7 +50,7 @@ func main() {
 		},
 	}
 
-	if err := app.Run(os.Args); err != nil {
+	if err := cmd.Run(ctx, os.Args); err != nil {
 		client.Close()
 		log.Fatal(err)
 	}

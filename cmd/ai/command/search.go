@@ -1,11 +1,12 @@
 package command
 
 import (
+	"context"
 	"coolaid/pkg/ai"
 	"fmt"
 	"strings"
 
-	"github.com/urfave/cli/v2"
+	"github.com/urfave/cli/v3"
 )
 
 func SearchCommand(client *ai.Client) *cli.Command {
@@ -25,10 +26,10 @@ func SearchCommand(client *ai.Client) *cli.Command {
 				Usage: "use Max Marginal Relevance",
 			},
 		},
-		Action: func(c *cli.Context) error {
+		Action: func(ctx context.Context, c *cli.Command) error {
 			prompt := strings.TrimSpace(strings.Join(c.Args().Slice(), " "))
 
-			result, err := client.Search(c.Context, prompt, ai.WithTopK(c.Int("k")), ai.WithMMR(c.Bool("mmr")))
+			result, err := client.Search(ctx, prompt, ai.WithTopK(c.Int("k")), ai.WithMMR(c.Bool("mmr")))
 			if err != nil {
 				return catchIndexError(err)
 			}

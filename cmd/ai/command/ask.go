@@ -1,12 +1,13 @@
 package command
 
 import (
+	"context"
 	"coolaid/pkg/ai"
 	"coolaid/pkg/spinner"
 	"fmt"
 	"strings"
 
-	"github.com/urfave/cli/v2"
+	"github.com/urfave/cli/v3"
 )
 
 const (
@@ -31,7 +32,7 @@ func AskCommand(client *ai.Client, sw *spinner.StreamWriter) *cli.Command {
 				Value: defaultSearchLimit,
 			},
 		},
-		Action: func(c *cli.Context) error {
+		Action: func(ctx context.Context, c *cli.Command) error {
 			prompt := strings.TrimSpace(strings.Join(c.Args().Slice(), " "))
 			opts := ai.AskOptions{
 				UseWeb:      c.Bool("web"),
@@ -39,7 +40,7 @@ func AskCommand(client *ai.Client, sw *spinner.StreamWriter) *cli.Command {
 			}
 
 			return spinner.WrapError(sw, func() error {
-				if err := client.Ask(c.Context, prompt, opts); err != nil {
+				if err := client.Ask(ctx, prompt, opts); err != nil {
 					return catchIndexError(err)
 				}
 				fmt.Println()

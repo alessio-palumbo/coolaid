@@ -7,7 +7,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/urfave/cli/v2"
+	"github.com/urfave/cli/v3"
 )
 
 func catchIndexError(err error) error {
@@ -20,7 +20,7 @@ func catchIndexError(err error) error {
 	return err
 }
 
-func parseTarget(c *cli.Context) (ai.Target, error) {
+func parseTarget(c *cli.Command) (ai.Target, error) {
 	target := ai.Target{
 		File:     strings.TrimSpace(c.Args().First()),
 		Function: strings.TrimSpace(c.String("fn")),

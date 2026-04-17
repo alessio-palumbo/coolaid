@@ -1,12 +1,13 @@
 package command
 
 import (
+	"context"
 	"coolaid/pkg/ai"
 	"coolaid/pkg/spinner"
 	"fmt"
 	"os"
 
-	"github.com/urfave/cli/v2"
+	"github.com/urfave/cli/v3"
 )
 
 func FlushMemoryCommand(client *ai.Client) *cli.Command {
@@ -14,10 +15,10 @@ func FlushMemoryCommand(client *ai.Client) *cli.Command {
 		Name:  "flush",
 		Usage: "flush memory queue",
 		Flags: []cli.Flag{},
-		Action: func(c *cli.Context) error {
+		Action: func(ctx context.Context, c *cli.Command) error {
 			sp := spinner.NewSpinner(spinner.WithMessage("Updating memory"))
 			processed, err := spinner.Run(sp, os.Stdout, func() (int, error) {
-				return client.FlushMemory(c.Context)
+				return client.FlushMemory(ctx)
 			})
 			if err != nil {
 				return err

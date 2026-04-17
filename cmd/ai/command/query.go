@@ -1,12 +1,13 @@
 package command
 
 import (
+	"context"
 	"coolaid/pkg/ai"
 	"coolaid/pkg/spinner"
 	"fmt"
 	"strings"
 
-	"github.com/urfave/cli/v2"
+	"github.com/urfave/cli/v3"
 )
 
 func QueryCommand(client *ai.Client, sw *spinner.StreamWriter) *cli.Command {
@@ -28,7 +29,7 @@ func QueryCommand(client *ai.Client, sw *spinner.StreamWriter) *cli.Command {
 				DefaultText: string(ai.RetrievalFast),
 			},
 		},
-		Action: func(c *cli.Context) error {
+		Action: func(ctx context.Context, c *cli.Command) error {
 			prompt := strings.TrimSpace(strings.Join(c.Args().Slice(), " "))
 			opts := []ai.TaskOption{ai.WithRetrievalMode(ai.RetrievalMode(c.String("mode")))}
 			if c.Bool("v") {
@@ -36,7 +37,7 @@ func QueryCommand(client *ai.Client, sw *spinner.StreamWriter) *cli.Command {
 			}
 
 			result, err := spinner.Wrap(sw, func() (ai.TaskResult, error) {
-				return client.Query(c.Context, prompt, opts...)
+				return client.Query(ctx, prompt, opts...)
 			})
 			if err != nil {
 				return catchIndexError(err)
