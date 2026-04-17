@@ -52,7 +52,7 @@ type Store interface {
 }
 
 type LLM interface {
-	Generate(prompt string) (string, error)
+	Generate(ctx context.Context, prompt string) (string, error)
 }
 
 // Service orchestrates project memory extraction and persistence.
@@ -138,6 +138,7 @@ func (s *service) FlushMemory(ctx context.Context) (int, error) {
 		}
 
 		if err := s.extractAndUpdate(ctx, in); err != nil {
+			slog.Warn("[memory] failed to update memory", slog.String("error", err.Error()))
 			continue // retry later
 		}
 
@@ -186,7 +187,7 @@ func (s *service) extract(ctx context.Context, in Input, mem store.Memory) (extr
 		return extraction{}, err
 	}
 
-	out, err := s.llm.Generate(prompt)
+	out, err := s.llm.Generate(ctx, prompt)
 	if err != nil {
 		return extraction{}, err
 	}

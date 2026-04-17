@@ -69,7 +69,7 @@ func (s *ChatSession) Send(ctx context.Context, msg string) error {
 	}
 
 	return s.client.memory.Capture(s.client.writer, msg, func(w io.Writer) error {
-		resp, err := s.client.llm.ChatStream(append(s.history[:len(s.history)-1], userMsg(prompt)), w)
+		resp, err := s.client.llm.ChatStream(ctx, append(s.history[:len(s.history)-1], userMsg(prompt)), w)
 		if err != nil {
 			return err
 		}

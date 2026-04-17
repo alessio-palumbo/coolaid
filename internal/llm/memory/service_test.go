@@ -101,7 +101,7 @@ type fakeLLM struct {
 	resp string
 }
 
-func (f fakeLLM) Generate(prompt string) (string, error) {
+func (f fakeLLM) Generate(ctx context.Context, prompt string) (string, error) {
 	return f.resp, nil
 }
 

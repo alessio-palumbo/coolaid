@@ -110,7 +110,7 @@ func (c *Client) Index(ctx context.Context, onProgress func(IndexProgress), onCo
 		Extensions:     c.cfg.extensions,
 		MaxWorkers:     c.cfg.IndexMaxWorkers,
 	}
-	if err := indexer.Build(c.llm, c.store, c.cfg.Logger, opts, func(p indexer.Progress) {
+	if err := indexer.Build(ctx, c.llm, c.store, c.cfg.Logger, opts, func(p indexer.Progress) {
 		if onProgress != nil {
 			onProgress(IndexProgress{
 				Done:  p.Done,
@@ -173,7 +173,7 @@ func (c *Client) Ask(ctx context.Context, prompt string, opts AskOptions) error 
 	}
 
 	return c.memory.Capture(c.writer, prompt, func(w io.Writer) error {
-		return c.llm.GenerateStream(prompt, w)
+		return c.llm.GenerateStream(ctx, prompt, w)
 	})
 }
 
@@ -201,7 +201,7 @@ func (c *Client) Summarize(ctx context.Context, file string) error {
 		return err
 	}
 
-	return c.llm.GenerateStream(prompt, c.writer)
+	return c.llm.GenerateStream(ctx, prompt, c.writer)
 }
 
 // Search performs a semantic search against the index and writes
@@ -288,7 +288,7 @@ func (c *Client) Query(ctx context.Context, prompt string, opts ...TaskOption) (
 	}
 
 	return TaskResult{}, c.memory.Capture(c.writer, prompt, func(w io.Writer) error {
-		return c.llm.GenerateStream(renderedPrompt, c.writer)
+		return c.llm.GenerateStream(ctx, renderedPrompt, c.writer)
 	})
 }
 
@@ -387,7 +387,7 @@ func (c *Client) runTargetTask(ctx context.Context, target Target, prompt string
 		return TaskResult{}, err
 	}
 
-	return TaskResult{}, c.llm.GenerateStream(renderedPrompt, c.writer)
+	return TaskResult{}, c.llm.GenerateStream(ctx, renderedPrompt, c.writer)
 }
 
 // doSearch retrieves relevant chunks for a given prompt using a symbol-first strategy.
@@ -440,7 +440,7 @@ func (c *Client) doSearch(ctx context.Context, prompt string, k int, useMMR bool
 // It embeds the prompt and retrieves the top-k most relevant chunks.
 // If useMMR is true, Max Marginal Relevance is applied to improve diversity.
 func (c *Client) semanticSearch(ctx context.Context, prompt string, k int, useMMR bool) ([]retrieval.Chunk, error) {
-	queryVec, err := c.llm.Embed(prompt)
+	queryVec, err := c.llm.Embed(ctx, prompt)
 	if err != nil {
 		return nil, err
 	}

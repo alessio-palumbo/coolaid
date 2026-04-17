@@ -1,15 +1,23 @@
 package llm
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"time"
 )
 
 const (
+	attemptTimeout  = 10 * time.Second
 	backoffPeriod   = 200 * time.Millisecond
 	embedMaxRetries = 3
+)
+
+var (
+	errRetryableNetwork = errors.New("retryable: network error")
+	errRetryableOllama  = errors.New("retryable: ollama unavailable")
 )
 
 type embeddingRequest struct {
@@ -23,10 +31,14 @@ type embeddingResponse struct {
 
 // Embed generates an embedding for the given text.
 //
+// The request is bounded by the provided context for timeout and
+// cancellation. Each attempt may use a derived context with its own
+// timeout.
+//
 // It retries on transient failures (network errors and 5xx responses)
 // using a simple backoff strategy. Non-retryable errors (e.g. 4xx)
 // are returned immediately.
-func (c *Client) Embed(text string) ([]float64, error) {
+func (c *Client) Embed(ctx context.Context, text string) ([]float64, error) {
 	reqBody := embeddingRequest{
 		Prompt: text,
 		Model:  c.EmbeddingsModel,
@@ -38,34 +50,49 @@ func (c *Client) Embed(text string) ([]float64, error) {
 	}
 
 	for i := range embedMaxRetries {
-		resp, err := c.post(embeddingsEndpoint, data)
-		if err != nil {
-			// network error -> retry
+		res, err := c.embedAttempt(ctx, data)
+		if err == nil {
+			return res.Embedding, nil
+		}
+
+		switch err {
+		case errRetryableNetwork, errRetryableOllama:
 			time.Sleep(time.Duration(i+1) * backoffPeriod)
 			continue
-		}
-
-		if resp.StatusCode >= 500 {
-			// ollama unavailable
-			resp.Body.Close()
-			time.Sleep(time.Duration(i+1) * backoffPeriod)
-			continue
-		}
-
-		if resp.StatusCode != http.StatusOK {
-			resp.Body.Close()
-			return nil, fmt.Errorf("llm returned status %d", resp.StatusCode)
-		}
-
-		var res embeddingResponse
-		if err := json.NewDecoder(resp.Body).Decode(&res); err != nil {
-			resp.Body.Close()
+		default:
 			return nil, err
 		}
-		resp.Body.Close()
-
-		return res.Embedding, nil
 	}
 
 	return nil, fmt.Errorf("embed failed after retries")
+}
+
+// embedAttempt performs a single embedding request with a per-attempt timeout.
+// It returns the decoded response or an error without applying retry logic.
+func (c *Client) embedAttempt(ctx context.Context, data []byte) (*embeddingResponse, error) {
+	attemptCtx, cancel := context.WithTimeout(ctx, attemptTimeout)
+	defer cancel()
+
+	resp, err := c.post(attemptCtx, embeddingsEndpoint, data)
+	if err != nil {
+		return nil, errRetryableNetwork
+	}
+	defer resp.Body.Close()
+
+	// Retryable server-side failure
+	if resp.StatusCode >= 500 {
+		return nil, errRetryableOllama
+	}
+
+	// Non-retryable client / unexpected error
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("llm returned status %d", resp.StatusCode)
+	}
+
+	var res embeddingResponse
+	if err := json.NewDecoder(resp.Body).Decode(&res); err != nil {
+		return nil, err
+	}
+
+	return &res, nil
 }

@@ -2,6 +2,7 @@ package llm
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -19,8 +20,10 @@ const (
 	RoleTool      Role = "tool"
 )
 const (
-	defaultHTTPTimeout = 60 * time.Second
-	ollamaURL          = "http://localhost:11434"
+	responseHeaderTimeout  = 60 * time.Second
+	idleConnTimeout        = 90 * time.Second
+	generateContextTimeout = 60 * time.Second
+	ollamaURL              = "http://localhost:11434"
 )
 
 var (
@@ -75,9 +78,21 @@ type tagsResponse struct {
 	} `json:"models"`
 }
 
+// NewClient creates a new Ollama client configured with the given LLM and embedding models.
+//
+// It validates connectivity to the Ollama server via a ping before returning the client.
+// The underlying HTTP client is configured with transport-level timeouts to guard against
+// stalled connections, while request-level timeouts are controlled via context.
+//
+// The returned client is safe for concurrent use.
 func NewClient(model, embeddingModel string) (*Client, error) {
 	client := &Client{
-		client:          &http.Client{Timeout: defaultHTTPTimeout},
+		client: &http.Client{
+			Transport: &http.Transport{
+				ResponseHeaderTimeout: responseHeaderTimeout,
+				IdleConnTimeout:       idleConnTimeout,
+			},
+		},
 		BaseURL:         ollamaURL,
 		LLMModel:        model,
 		EmbeddingsModel: embeddingModel,
@@ -89,23 +104,17 @@ func NewClient(model, embeddingModel string) (*Client, error) {
 	return client, nil
 }
 
-func (c *Client) Generate(prompt string) (string, error) {
-	reqBody := generateRequest{
-		Prompt: prompt,
-		Model:  c.LLMModel,
-		Stream: false,
-	}
-	data, err := json.Marshal(reqBody)
-	if err != nil {
-		return "", err
-	}
+// Generate performs a non-streaming LLM completion request.
+//
+// It sends the prompt to the configured model and blocks until the full response is received.
+// The request is bounded by the provided context for timeout/cancellation control.
+func (c *Client) Generate(ctx context.Context, prompt string) (string, error) {
+	ctx, cancel := context.WithTimeout(ctx, generateContextTimeout)
+	defer cancel()
 
-	resp, err := c.post(generateEndpoint, data)
+	resp, err := c.doGenerateRequest(ctx, prompt, false)
 	if err != nil {
 		return "", err
-	}
-	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("llm returned status %d", resp.StatusCode)
 	}
 	defer resp.Body.Close()
 
@@ -116,35 +125,32 @@ func (c *Client) Generate(prompt string) (string, error) {
 	return chunk.Response, nil
 }
 
-func (c *Client) GenerateStream(prompt string, writer io.Writer) error {
-	reqBody := generateRequest{
-		Prompt: prompt,
-		Model:  c.LLMModel,
-		Stream: true,
-	}
-	data, err := json.Marshal(reqBody)
+// GenerateStream performs a streaming LLM completion request.
+//
+// Tokens are written incrementally to the provided writer as they are received.
+// The call respects context cancellation and will stop immediately if the context is done.
+// Intended for real-time CLI output or interactive sessions.
+func (c *Client) GenerateStream(ctx context.Context, prompt string, writer io.Writer) error {
+	resp, err := c.doGenerateRequest(ctx, prompt, true)
 	if err != nil {
 		return err
-	}
-
-	resp, err := c.post(generateEndpoint, data)
-	if err != nil {
-		return err
-	}
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("llm returned status %d", resp.StatusCode)
 	}
 	defer resp.Body.Close()
 
 	decoder := json.NewDecoder(resp.Body)
 
 	for {
-		var chunk generateResponse
-		err := decoder.Decode(&chunk)
-		if err == io.EOF {
-			break
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
 		}
-		if err != nil {
+
+		var chunk generateResponse
+		if err := decoder.Decode(&chunk); err != nil {
+			if err == io.EOF {
+				break
+			}
 			return err
 		}
 
@@ -159,7 +165,14 @@ func (c *Client) GenerateStream(prompt string, writer io.Writer) error {
 	return nil
 }
 
-func (c *Client) ChatStream(messages []Message, writer io.Writer) (string, error) {
+// ChatStream performs a streaming chat completion request.
+//
+// It streams assistant tokens to the provided writer in real time
+// while also accumulating the full response for history tracking.
+//
+// The request respects context cancellation and will stop immediately
+// if the context is done (useful for user interruption or shutdown).
+func (c *Client) ChatStream(ctx context.Context, messages []Message, writer io.Writer) (string, error) {
 	reqBody := chatRequest{
 		Model:    c.LLMModel,
 		Messages: toChatMessages(messages),
@@ -170,33 +183,36 @@ func (c *Client) ChatStream(messages []Message, writer io.Writer) (string, error
 		return "", err
 	}
 
-	resp, err := c.post(chatEndpoint, data)
+	resp, err := c.post(ctx, chatEndpoint, data)
 	if err != nil {
 		return "", err
 	}
+	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		return "", fmt.Errorf("llm returned status %d", resp.StatusCode)
 	}
-	defer resp.Body.Close()
 
 	decoder := json.NewDecoder(resp.Body)
-
 	var fullResponse strings.Builder
 
 	for {
-		var chunk chatResponse
-		err := decoder.Decode(&chunk)
-		if err == io.EOF {
-			break
+		select {
+		case <-ctx.Done():
+			return "", ctx.Err()
+		default:
 		}
-		if err != nil {
+
+		var chunk chatResponse
+		if err := decoder.Decode(&chunk); err != nil {
+			if err == io.EOF {
+				break
+			}
 			return "", err
 		}
 
 		if content := chunk.Message.Content; content != "" {
 			// stream to user
 			_, _ = writer.Write([]byte(content))
-
 			// capture for history
 			fullResponse.WriteString(content)
 		}
@@ -209,14 +225,54 @@ func (c *Client) ChatStream(messages []Message, writer io.Writer) (string, error
 	return fullResponse.String(), nil
 }
 
-func (c *Client) post(endpoint string, data []byte) (*http.Response, error) {
-	resp, err := c.client.Post(c.BaseURL+endpoint, contentTypeJSON, bytes.NewBuffer(data))
+// doGenerateRequest prepares and executes a generate request against the LLM.
+//
+// It builds the request payload and performs the HTTP call using the provided
+// context for timeout and cancellation control. The caller is responsible for
+// consuming and closing the response body.
+//
+// Non-200 responses are treated as errors and the response body is closed
+// before returning.
+func (c *Client) doGenerateRequest(ctx context.Context, prompt string, stream bool) (*http.Response, error) {
+	reqBody := generateRequest{
+		Prompt: prompt,
+		Model:  c.LLMModel,
+		Stream: stream,
+	}
+	data, err := json.Marshal(reqBody)
+	if err != nil {
+		return nil, err
+	}
+
+	resp, err := c.post(ctx, generateEndpoint, data)
+	if err != nil {
+		return nil, err
+	}
+	if resp.StatusCode != http.StatusOK {
+		resp.Body.Close()
+		return nil, fmt.Errorf("llm returned status %d", resp.StatusCode)
+	}
+
+	return resp, nil
+}
+
+// post performs a POST request to the given endpoint and returns the response.
+// It assume Content-Type is application/json.
+func (c *Client) post(ctx context.Context, endpoint string, data []byte) (*http.Response, error) {
+	req, err := http.NewRequestWithContext(ctx, "POST", c.BaseURL+endpoint, bytes.NewReader(data))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", contentTypeJSON)
+
+	resp, err := c.client.Do(req)
 	if err != nil {
 		return nil, err
 	}
 	return resp, err
 }
 
+// ping checks that ollama server is running and that the configured models are available.
 func (c *Client) ping() error {
 	resp, err := c.client.Get(c.BaseURL + tagsEndpoint)
 	if err != nil {

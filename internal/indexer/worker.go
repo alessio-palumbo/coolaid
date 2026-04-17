@@ -1,6 +1,7 @@
 package indexer
 
 import (
+	"context"
 	"coolaid/internal/llm"
 	"coolaid/internal/store"
 	"log/slog"
@@ -11,6 +12,7 @@ import (
 )
 
 type EmbedPipeline struct {
+	ctx     context.Context
 	jobs    chan embedJob
 	results chan embedResult
 
@@ -38,8 +40,9 @@ type embedResult struct {
 	err       error
 }
 
-func NewEmbedPipeline(client *llm.Client, store *store.Store, logger *slog.Logger, maxWorkers, totalFiles int, onProgress ProgressFunc) *EmbedPipeline {
+func NewEmbedPipeline(ctx context.Context, client *llm.Client, store *store.Store, logger *slog.Logger, maxWorkers, totalFiles int, onProgress ProgressFunc) *EmbedPipeline {
 	p := &EmbedPipeline{
+		ctx:        ctx,
 		jobs:       make(chan embedJob, 100),
 		results:    make(chan embedResult, 100),
 		client:     client,
@@ -71,7 +74,7 @@ func (p *EmbedPipeline) worker() {
 	for job := range p.jobs {
 		chunks := ChunkFile(job.file, job.content)
 		for _, chunk := range chunks {
-			embedding, err := p.client.Embed(chunk.Text)
+			embedding, err := p.client.Embed(p.ctx, chunk.Text)
 			p.results <- embedResult{
 				file:      job.file,
 				embedding: embedding,
