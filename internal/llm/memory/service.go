@@ -18,6 +18,8 @@ import (
 	"github.com/google/uuid"
 )
 
+var ErrNoExtraction = errors.New("no extraction")
+
 // Input represents a single interaction used for memory extraction.
 //
 // It combines:
@@ -154,6 +156,12 @@ func (s *service) FlushMemory(ctx context.Context) (int, error) {
 
 		ex, err := s.extract(ctx, in, mem)
 		if err != nil {
+			if errors.Is(err, ErrNoExtraction) {
+				// safe to discard
+				itemsIDs = append(itemsIDs, it.ID)
+				continue
+			}
+
 			slog.Warn("[memory] failed to extract memory", slog.String("id", it.ID), slog.String("error", err.Error()))
 			continue // retry later
 		}
@@ -207,7 +215,7 @@ func parseExtraction(s string) (extraction, error) {
 
 	jsonStr := extractJSON(s)
 	if jsonStr == "" {
-		return ex, errors.New("no JSON found in response")
+		return ex, ErrNoExtraction
 	}
 
 	err := json.Unmarshal([]byte(jsonStr), &ex)
