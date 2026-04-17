@@ -17,7 +17,7 @@ func main() {
 		log.Fatal(err)
 	}
 
-	sw := spinner.New(os.Stdout)
+	sw := spinner.NewStreamWriter(os.Stdout)
 	client, err := ai.NewClient(cfg, sw)
 	if err != nil {
 		log.Fatal(err)

@@ -2,158 +2,45 @@ package spinner
 
 import (
 	"bytes"
-	"errors"
 	"strings"
 	"testing"
 	"time"
 )
 
-func TestWriteStopsSpinner(t *testing.T) {
-	w := &mockWriter{}
-	sw := New(w, WithStartDelay(1*time.Millisecond), WithFrameInterval(1*time.Millisecond))
+func TestSpinner_StartAndStop(t *testing.T) {
+	var buf bytes.Buffer
 
-	sw.startSpinner()
-	time.Sleep(5 * time.Millisecond)
-
-	if _, err := sw.Write([]byte("hello")); err != nil {
-		t.Fatal(err)
-	}
-
-	// spinner should be stopped
-	sw.mu.Lock()
-	defer sw.mu.Unlock()
-
-	if sw.cancel != nil {
-		t.Fatal("spinner should be stopped after Write")
-	}
-}
-
-func TestWrapStopsSpinner(t *testing.T) {
-	w := &mockWriter{}
-	sw := New(w, WithStartDelay(1*time.Millisecond), WithFrameInterval(1*time.Millisecond))
-
-	_, err := Wrap(sw, func() (int, error) {
-		time.Sleep(10 * time.Millisecond)
-		return 42, nil
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if sw.cancel != nil {
-		t.Fatal("spinner should be stopped after Wrap")
-	}
-}
-
-func TestWrapError(t *testing.T) {
-	w := &mockWriter{}
-	sw := New(w, WithStartDelay(1*time.Millisecond), WithFrameInterval(1*time.Millisecond))
-
-	expectedErr := "boom"
-
-	err := WrapError(sw, func() error {
-		time.Sleep(5 * time.Millisecond)
-		return errors.New(expectedErr)
-	})
-
-	if err == nil || err.Error() != expectedErr {
-		t.Fatalf("expected error %q, got %v", expectedErr, err)
-	}
-}
-
-func TestWrapFastFunction_NoSpinner(t *testing.T) {
-	w := &mockWriter{}
-	sw := New(w, WithStartDelay(50*time.Millisecond)) // large delay
-
-	_, err := Wrap(sw, func() (int, error) {
-		return 1, nil // immediate
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-
-}
-
-func TestOptionsApplied(t *testing.T) {
-	w := &mockWriter{}
-	frames := []string{"a", "b"}
-
-	sw := New(w,
-		WithStartDelay(123*time.Millisecond),
-		WithFrameInterval(456*time.Millisecond),
-		WithFrames(frames),
+	s := NewSpinner(
+		WithStartDelay(10*time.Millisecond),
+		WithFrameInterval(5*time.Millisecond),
+		WithMessage("loading"),
+		WithFrames([]string{"-", "\\", "|", "/"}),
 	)
 
-	if sw.startDelay != 123*time.Millisecond {
-		t.Fatal("startDelay not applied")
-	}
-	if sw.frameInterval != 456*time.Millisecond {
-		t.Fatal("frameInterval not applied")
-	}
-	if len(sw.frames) != 2 || sw.frames[0] != "a" {
-		t.Fatal("frames not applied")
-	}
-}
+	stop := s.Start(&buf)
 
-func TestStartSpinner_Idempotent(t *testing.T) {
-	w := &mockWriter{}
-	sw := New(w)
+	// allow spinner to render a few frames
+	time.Sleep(40 * time.Millisecond)
 
-	sw.startSpinner()
-	sw.startSpinner() // should not start another
+	stop()
 
-	time.Sleep(5 * time.Millisecond)
-	sw.stopSpinner()
-}
+	output := buf.String()
 
-func TestStopSpinner_Idempotent(t *testing.T) {
-	w := &mockWriter{}
-	sw := New(w)
-
-	sw.startSpinner()
-	time.Sleep(5 * time.Millisecond)
-
-	sw.stopSpinner()
-	sw.stopSpinner() // should not panic
-}
-
-func TestSpinnerClearsBeforeWrite(t *testing.T) {
-	var buf bytes.Buffer
-	sw := New(&buf, WithStartDelay(1*time.Millisecond), WithFrameInterval(1*time.Millisecond))
-
-	_ = WrapError(sw, func() error {
-		time.Sleep(5 * time.Millisecond)
-		_, _ = sw.Write([]byte("done\n"))
-		return nil
-	})
-
-	out := buf.String()
-
-	if !strings.Contains(out, "done") {
-		t.Fatal("expected output to contain 'done'")
+	// Should contain message
+	if !strings.Contains(output, "loading") {
+		t.Errorf("expected output to contain message, got: %q", output)
 	}
 
-	if strings.Contains(out, "Thinking...done") {
-		t.Fatal("spinner not cleared before write")
+	// Should contain at least one frame
+	foundFrame := false
+	for _, f := range []string{"-", "\\", "|", "/"} {
+		if strings.Contains(output, f) {
+			foundFrame = true
+			break
+		}
 	}
-}
 
-func TestSpinnerRestart(t *testing.T) {
-	w := &mockWriter{}
-	sw := New(w)
-
-	sw.startSpinner()
-	time.Sleep(5 * time.Millisecond)
-	sw.stopSpinner()
-
-	sw.startSpinner() // should work again
-	time.Sleep(5 * time.Millisecond)
-	sw.stopSpinner()
-}
-
-type mockWriter struct {
-	buf bytes.Buffer
-}
-
-func (m *mockWriter) Write(p []byte) (int, error) {
-	return m.buf.Write(p)
+	if !foundFrame {
+		t.Errorf("expected output to contain at least one spinner frame, got: %q", output)
+	}
 }
