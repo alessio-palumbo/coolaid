@@ -15,10 +15,7 @@ func CommentCommand(client *ai.Client, sw *spinner.StreamWriter) *cli.Command {
 		Usage:     "comment a file or a function",
 		ArgsUsage: "<file>",
 		Flags: []cli.Flag{
-			&cli.StringFlag{
-				Name:  "fn",
-				Usage: "function to edit",
-			},
+			fnFlag(),
 		},
 		Action: func(ctx context.Context, c *cli.Command) error {
 			target, err := parseTarget(c)
@@ -26,19 +23,13 @@ func CommentCommand(client *ai.Client, sw *spinner.StreamWriter) *cli.Command {
 				return err
 			}
 
-			result, err := spinner.Wrap(sw, func() (ai.TaskResult, error) {
-				return client.Comment(ctx, target, ai.WithRetrievalMode(ai.RetrievalNone))
+			return spinner.WrapError(sw, func() error {
+				if _, err := client.Comment(ctx, target); err != nil {
+					return err
+				}
+				fmt.Println()
+				return nil
 			})
-			if err != nil {
-				return catchIndexError(err)
-			}
-
-			if result.Status.NoResults {
-				fmt.Println("No relevant results found")
-			}
-
-			fmt.Println()
-			return nil
 		},
 	}
 }

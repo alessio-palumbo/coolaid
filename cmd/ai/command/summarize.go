@@ -14,6 +14,10 @@ func SummarizeCommand(client *ai.Client, sw *spinner.StreamWriter) *cli.Command 
 		Name:      "summarize",
 		Usage:     "summarize a file",
 		ArgsUsage: "<file>",
+		Flags: []cli.Flag{
+			rngFlag(),
+			ragFlag(),
+		},
 		Action: func(ctx context.Context, c *cli.Command) error {
 			target, err := parseTarget(c)
 			if err != nil {
@@ -21,7 +25,7 @@ func SummarizeCommand(client *ai.Client, sw *spinner.StreamWriter) *cli.Command 
 			}
 
 			return spinner.WrapError(sw, func() error {
-				if _, err := client.Summarize(ctx, target); err != nil {
+				if _, err := client.Summarize(ctx, target, withRagOption(c)...); err != nil {
 					return err
 				}
 				fmt.Println()

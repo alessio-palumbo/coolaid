@@ -14,7 +14,6 @@ func FlushMemoryCommand(client *ai.Client) *cli.Command {
 	return &cli.Command{
 		Name:  "flush",
 		Usage: "flush memory queue",
-		Flags: []cli.Flag{},
 		Action: func(ctx context.Context, c *cli.Command) error {
 			sp := spinner.NewSpinner(spinner.WithMessage("Updating memory"))
 			processed, err := spinner.Run(sp, os.Stdout, func() (int, error) {

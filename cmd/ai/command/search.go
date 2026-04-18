@@ -15,23 +15,15 @@ func SearchCommand(client *ai.Client) *cli.Command {
 		Usage:     "semantic search in indexed code",
 		ArgsUsage: "<prompt>",
 		Flags: []cli.Flag{
-			&cli.IntFlag{
-				Name:  "k",
-				Value: 5,
-				Usage: "number of results",
-			},
-			&cli.BoolFlag{
-				Name:  "mmr",
-				Value: false,
-				Usage: "use Max Marginal Relevance",
-			},
+			kFlag(5),
+			mmrFlag(),
 		},
 		Action: func(ctx context.Context, c *cli.Command) error {
 			prompt := strings.TrimSpace(strings.Join(c.Args().Slice(), " "))
 
-			result, err := client.Search(ctx, prompt, ai.WithTopK(c.Int("k")), ai.WithMMR(c.Bool("mmr")))
+			result, err := client.Search(ctx, prompt, withSearchOptions(c)...)
 			if err != nil {
-				return catchIndexError(err)
+				return err
 			}
 
 			if result.Status.NoResults {

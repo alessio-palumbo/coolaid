@@ -1,7 +1,6 @@
 package command
 
 import (
-	"coolaid/internal/store"
 	"coolaid/pkg/ai"
 	"errors"
 	"strconv"
@@ -10,15 +9,10 @@ import (
 	"github.com/urfave/cli/v3"
 )
 
-func catchIndexError(err error) error {
-	switch {
-	case errors.Is(err, store.ErrNotIndexed):
-		return errors.New("project not indexed: run `ai index`")
-	case errors.Is(err, store.ErrReindexRequired):
-		return errors.New("index outdated: run `ai index`")
-	}
-	return err
-}
+const (
+	minSearchLimit = 1
+	maxSearchLimit = 10
+)
 
 func parseTarget(c *cli.Command) (ai.Target, error) {
 	target := ai.Target{
@@ -57,4 +51,29 @@ func parseTarget(c *cli.Command) (ai.Target, error) {
 	}
 
 	return target, nil
+}
+
+func withModeOption(c *cli.Command) []ai.TaskOption {
+	return []ai.TaskOption{ai.WithRetrievalMode(ai.RetrievalMode(c.String("mode")))}
+}
+
+func withRagOption(c *cli.Command) []ai.TaskOption {
+	if !c.Bool("rag") {
+		return []ai.TaskOption{ai.WithNoRetrieval()}
+	}
+	return nil
+}
+
+func withSearchOptions(c *cli.Command) []ai.TaskOption {
+	return []ai.TaskOption{ai.WithTopK(c.Int("k")), ai.WithMMR(c.Bool("mmr"))}
+}
+
+func withWebOptions(c *cli.Command) ai.AskOptions {
+	if l := c.Int("web"); l > 0 {
+		return ai.AskOptions{
+			UseWeb:      true,
+			SearchLimit: max(minSearchLimit, min(l, maxSearchLimit)),
+		}
+	}
+	return ai.AskOptions{UseWeb: false}
 }

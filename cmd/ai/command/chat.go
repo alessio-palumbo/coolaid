@@ -17,16 +17,10 @@ func ChatCommand(client *ai.Client, sw *spinner.StreamWriter) *cli.Command {
 		Name:  "chat",
 		Usage: "start a chat with the AI",
 		Flags: []cli.Flag{
-			&cli.StringFlag{
-				Name:  "mode",
-				Value: "fast",
-				Usage: fmt.Sprintf("mode determines the algorithm used by RAG [%s, %s, %s]",
-					ai.RetrievalFast, ai.RetrievalBalanced, ai.RetrievalDeep),
-				DefaultText: string(ai.RetrievalFast),
-			},
+			modeFlag(ai.RetrievalFast),
 		},
 		Action: func(ctx context.Context, c *cli.Command) error {
-			session := client.NewChatSession(ai.WithRetrievalMode(ai.RetrievalMode(c.String("mode"))))
+			session := client.NewChatSession(withModeOption(c)...)
 			fmt.Println("Starting AI chat. Type 'exit' or Ctrl+C to quit.")
 
 			reader := bufio.NewReader(os.Stdin)
@@ -43,15 +37,13 @@ func ChatCommand(client *ai.Client, sw *spinner.StreamWriter) *cli.Command {
 					break
 				}
 
-				if err := spinner.WrapError(sw, func() error {
+				return spinner.WrapError(sw, func() error {
 					if err := session.Send(ctx, input); err != nil {
-						return catchIndexError(err)
+						return err
 					}
 					fmt.Println()
 					return nil
-				}); err != nil {
-					return err
-				}
+				})
 			}
 
 			return nil

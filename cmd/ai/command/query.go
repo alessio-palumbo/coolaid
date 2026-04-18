@@ -16,22 +16,13 @@ func QueryCommand(client *ai.Client, sw *spinner.StreamWriter) *cli.Command {
 		Usage:     "ask a question over your indexed code",
 		ArgsUsage: "<prompt>",
 		Flags: []cli.Flag{
-			&cli.BoolFlag{
-				Name:  "v",
-				Value: false,
-				Usage: "set to true for verbose structure output",
-			},
-			&cli.StringFlag{
-				Name:  "mode",
-				Value: "fast",
-				Usage: fmt.Sprintf("mode determines the algorithm used by RAG [%s, %s, %s]",
-					ai.RetrievalFast, ai.RetrievalBalanced, ai.RetrievalDeep),
-				DefaultText: string(ai.RetrievalFast),
-			},
+			vFlag(),
+			modeFlag(ai.RetrievalFast),
 		},
 		Action: func(ctx context.Context, c *cli.Command) error {
 			prompt := strings.TrimSpace(strings.Join(c.Args().Slice(), " "))
-			opts := []ai.TaskOption{ai.WithRetrievalMode(ai.RetrievalMode(c.String("mode")))}
+
+			opts := withModeOption(c)
 			if c.Bool("v") {
 				opts = append(opts, ai.WithStructuredOutput())
 			}
@@ -40,7 +31,7 @@ func QueryCommand(client *ai.Client, sw *spinner.StreamWriter) *cli.Command {
 				return client.Query(ctx, prompt, opts...)
 			})
 			if err != nil {
-				return catchIndexError(err)
+				return err
 			}
 
 			if result.Status.NoResults {

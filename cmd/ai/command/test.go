@@ -15,10 +15,8 @@ func TestCommand(client *ai.Client, sw *spinner.StreamWriter) *cli.Command {
 		Usage:     "generate tests for a file or function",
 		ArgsUsage: "<file>",
 		Flags: []cli.Flag{
-			&cli.StringFlag{
-				Name:  "fn",
-				Usage: "function to generate test for",
-			},
+			fnFlag(),
+			ragFlag(),
 		},
 		Action: func(ctx context.Context, c *cli.Command) error {
 			target, err := parseTarget(c)
@@ -26,19 +24,13 @@ func TestCommand(client *ai.Client, sw *spinner.StreamWriter) *cli.Command {
 				return err
 			}
 
-			result, err := spinner.Wrap(sw, func() (ai.TaskResult, error) {
-				return client.GenerateTests(ctx, target, ai.WithRetrievalMode(ai.RetrievalBalanced))
+			return spinner.WrapError(sw, func() error {
+				if _, err := client.GenerateTests(ctx, target, withRagOption(c)...); err != nil {
+					return err
+				}
+				fmt.Println()
+				return nil
 			})
-			if err != nil {
-				return catchIndexError(err)
-			}
-
-			if result.Status.NoResults {
-				fmt.Println("No relevant results found")
-			}
-
-			fmt.Println()
-			return nil
 		},
 	}
 }

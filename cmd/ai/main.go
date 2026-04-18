@@ -4,8 +4,10 @@ import (
 	"context"
 	"coolaid/cmd/ai/command"
 	"coolaid/cmd/ai/config"
+	"coolaid/internal/store"
 	"coolaid/pkg/ai"
 	"coolaid/pkg/spinner"
+	"errors"
 	"log"
 	"os"
 	"os/signal"
@@ -52,6 +54,16 @@ func main() {
 
 	if err := cmd.Run(ctx, os.Args); err != nil {
 		client.Close()
-		log.Fatal(err)
+		log.Fatal(catchIndexError(err))
 	}
+}
+
+func catchIndexError(err error) error {
+	switch {
+	case errors.Is(err, store.ErrNotIndexed):
+		return errors.New("project not indexed: run `ai index`")
+	case errors.Is(err, store.ErrReindexRequired):
+		return errors.New("index outdated: run `ai index`")
+	}
+	return err
 }

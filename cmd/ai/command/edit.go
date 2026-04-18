@@ -17,19 +17,9 @@ func EditCommand(client *ai.Client, sw *spinner.StreamWriter) *cli.Command {
 		Usage:     "edit a file or a function",
 		ArgsUsage: "<file> <prompt>",
 		Flags: []cli.Flag{
-			&cli.StringFlag{
-				Name:  "fn",
-				Usage: "function to edit",
-			},
-			&cli.StringFlag{
-				Name:  "rng",
-				Usage: "start and end line to edit (start-end)",
-			},
-			&cli.BoolFlag{
-				Name:  "rag",
-				Value: false,
-				Usage: "use RAG for more context",
-			},
+			fnFlag(),
+			rngFlag(),
+			ragFlag(),
 		},
 		Action: func(ctx context.Context, c *cli.Command) error {
 			target, err := parseTarget(c)
@@ -42,23 +32,13 @@ func EditCommand(client *ai.Client, sw *spinner.StreamWriter) *cli.Command {
 			}
 			prompt := strings.TrimSpace(strings.Join(c.Args().Tail(), " "))
 
-			ragMode := ai.RetrievalNone
-			if c.Bool("rag") {
-				ragMode = ai.RetrievalBalanced
-			}
-			result, err := spinner.Wrap(sw, func() (ai.TaskResult, error) {
-				return client.Edit(ctx, target, prompt, ai.WithRetrievalMode(ragMode))
+			return spinner.WrapError(sw, func() error {
+				if _, err := client.Edit(ctx, target, prompt, withRagOption(c)...); err != nil {
+					return err
+				}
+				fmt.Println()
+				return nil
 			})
-			if err != nil {
-				return catchIndexError(err)
-			}
-
-			if result.Status.NoResults {
-				fmt.Println("No relevant results found")
-			}
-
-			fmt.Println()
-			return nil
 		},
 	}
 }
