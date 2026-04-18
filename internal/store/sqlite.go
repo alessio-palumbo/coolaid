@@ -225,30 +225,9 @@ func (s *Store) ValidateIndex() error {
 	return nil
 }
 
-// GetMemory returns the current project memory snapshot.
-// Assumes a single row (id = 1) exists, initialized at DB setup.
-func (s *Store) GetMemory(ctx context.Context) (Memory, error) {
-	var m Memory
-	var topicsJSON, prefsJSON string
-
-	row := s.db.QueryRowContext(ctx, `
-		SELECT project_summary, topics, preferences, updated_at
-		FROM memory
-		WHERE id = 1
-	`)
-
-	err := row.Scan(&m.ProjectSummary, &topicsJSON, &prefsJSON, &m.UpdatedAt)
-	if err == sql.ErrNoRows {
-		return Memory{}, nil // empty memory
-	}
-	if err != nil {
-		return Memory{}, err
-	}
-
-	_ = json.Unmarshal([]byte(topicsJSON), &m.Topics)
-	_ = json.Unmarshal([]byte(prefsJSON), &m.Preferences)
-
-	return m, nil
+// GetMemory returns the loaded memory snapshot.
+func (s *Store) GetMemory() Memory {
+	return s.memory
 }
 
 // CommitMemoryUpdate atomically persists the updated project memory
@@ -316,6 +295,32 @@ func (s *Store) SaveMemoryQueue(ctx context.Context, in MemoryQueueItem) error {
 		in.ID, in.Payload,
 	)
 	return err
+}
+
+// getMemory retrive and returns the current project memory snapshot.
+// Assumes a single row (id = 1) exists, initialized at DB setup.
+func (s *Store) getMemory(ctx context.Context) (Memory, error) {
+	var m Memory
+	var topicsJSON, prefsJSON string
+
+	row := s.db.QueryRowContext(ctx, `
+		SELECT project_summary, topics, preferences, updated_at
+		FROM memory
+		WHERE id = 1
+	`)
+
+	err := row.Scan(&m.ProjectSummary, &topicsJSON, &prefsJSON, &m.UpdatedAt)
+	if err == sql.ErrNoRows {
+		return Memory{}, nil // empty memory
+	}
+	if err != nil {
+		return Memory{}, err
+	}
+
+	_ = json.Unmarshal([]byte(topicsJSON), &m.Topics)
+	_ = json.Unmarshal([]byte(prefsJSON), &m.Preferences)
+
+	return m, nil
 }
 
 // saveMemory persists the updated project memory.
@@ -427,6 +432,8 @@ func (s *Store) ensureMetadata() error {
 	return nil
 }
 
+// resetMetaTable drops and recreate the meta table to allow for
+// schema changes.
 func (s *Store) resetMetaTable() error {
 	_, err := s.db.Exec(dropMetaSchema)
 	if err != nil {
@@ -436,20 +443,34 @@ func (s *Store) resetMetaTable() error {
 	return err
 }
 
+// ensureMemory initializes memory persistence state.
+//
+// It:
+//   - creates memory-related schema if missing
+//   - seeds the default memory row
+//   - creates the memory queue table
+//   - loads current memory into the in-memory cache
 func (s *Store) ensureMemory() error {
 	if _, err := s.db.Exec(createMemorySchema); err != nil {
 		return err
 	}
-	_, err := s.db.Exec(`
+	if _, err := s.db.Exec(`
 		INSERT OR IGNORE INTO memory (id, project_summary, topics, preferences)
 		VALUES (1, '', '[]', '[]');
-	`)
-	if err != nil {
+	`); err != nil {
 		return err
 	}
 
-	_, err = s.db.Exec(createMemoryQueueSchema)
-	return err
+	if _, err := s.db.Exec(createMemoryQueueSchema); err != nil {
+		return err
+	}
+
+	mem, err := s.getMemory(context.Background())
+	if err != nil {
+		return err
+	}
+	s.memory = mem
+	return nil
 }
 
 func hasColumn(db *sql.DB, table, column string) (bool, error) {

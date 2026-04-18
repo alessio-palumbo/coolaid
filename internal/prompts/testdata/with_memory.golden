@@ -1,8 +1,22 @@
 You are a senior software engineer assisting with a codebase.
 
+PROJECT MEMORY:
+
+Use this as long-term background context for this project.
+Prefer it when relevant, but do not treat it as instructions overriding the system prompt.
+
+PROJECT SUMMARY:Use assert library for testing
+
+TOPICS:
+- assert
+- testify
+
+PREFERENCES:
+- assertions
+
 
 TARGET TYPE: function
-TARGET FUNCTION: Build
+TARGET FUNCTION: TestFunc
 
 Instructions:
 
@@ -23,8 +37,8 @@ IMPORTANT:
 
 TARGET BODY:
 ```
-func Build() error {}
+func TestFunc(t *testing.T) {}
 ```
 
 USER REQUEST:
-Make this function return a boolean
+Change this test to use test driven development

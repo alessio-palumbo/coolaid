@@ -114,7 +114,7 @@ func TestFlushMemory(t *testing.T) {
 
 			assert.Equal(t, tc.expectedProc, processed)
 
-			got, _ := tc.store.GetMemory(context.Background())
+			got := tc.store.GetMemory()
 			assert.Equal(t, tc.expected.ProjectSummary, got.ProjectSummary)
 			assert.Equal(t, tc.expected.Topics, got.Topics)
 			assert.Equal(t, tc.expected.Preferences, got.Preferences)
@@ -135,9 +135,10 @@ type fakeStore struct {
 	memQueue []store.MemoryQueueItem
 }
 
-func (f *fakeStore) GetMemory(ctx context.Context) (store.Memory, error) {
-	return f.mem, nil
+func (f *fakeStore) GetMemory() store.Memory {
+	return f.mem
 }
+
 func (f *fakeStore) CommitMemoryUpdate(ctx context.Context, m store.Memory, ids []string) error {
 	f.mem = m
 	return nil

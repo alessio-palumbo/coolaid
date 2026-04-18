@@ -50,6 +50,8 @@ type Store struct {
 	DBPath      string
 	Items       []Item
 	Summary     string
+
+	memory Memory
 }
 
 // Memory is the persisted, compact representation of project-level context.

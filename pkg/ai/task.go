@@ -7,6 +7,7 @@ import (
 	"coolaid/internal/prompts"
 	"coolaid/internal/query"
 	"coolaid/internal/retrieval"
+	"coolaid/internal/store"
 	"coolaid/internal/web"
 	"errors"
 	"fmt"
@@ -164,7 +165,7 @@ func (c *Client) Ask(ctx context.Context, prompt string, opts AskOptions) error 
 		}
 
 		prompt, err = prompts.Render(
-			&prompts.Config{Template: prompts.TemplateQuery},
+			newPromptConfig(prompts.TemplateQuery, c.store.GetMemory(), nil, nil),
 			prompt, chunks...,
 		)
 		if err != nil {
@@ -274,11 +275,7 @@ func (c *Client) Query(ctx context.Context, prompt string, opts ...TaskOption) (
 		return TaskResult{Status: TaskStatus{NoResults: true}}, nil
 	}
 
-	pConfig := &prompts.Config{
-		Template:       prompts.TemplateQuery,
-		SystemOverride: taskCfg.prompt.systemOverride,
-		Structured:     taskCfg.prompt.structuredOutput,
-	}
+	pConfig := newPromptConfig(prompts.TemplateQuery, c.store.GetMemory(), &taskCfg.prompt, nil)
 	if usedSummary {
 		pConfig.Summary = c.store.Summary
 	}
@@ -299,7 +296,7 @@ func (c *Client) Query(ctx context.Context, prompt string, opts ...TaskOption) (
 // and excludes the target file itself from the retrieved context
 // to avoid redundant information.
 func (c *Client) Explain(ctx context.Context, target Target, opts ...TaskOption) (TaskResult, error) {
-	return c.runTargetTask(ctx, target, "", prompts.TemplateExplain, opts)
+	return c.runTargetTask(ctx, target, "", prompts.TemplateExplain, opts...)
 }
 
 // GenerateTests generates tests for a given target.
@@ -311,7 +308,7 @@ func (c *Client) GenerateTests(ctx context.Context, target Target, opts ...TaskO
 	if isSupportedLanguage(target.File) {
 		template = prompts.TemplateTestGo
 	}
-	return c.runTargetTask(ctx, target, "", template, opts)
+	return c.runTargetTask(ctx, target, "", template, opts...)
 }
 
 // Edit modifies code based on a user-provided instruction.
@@ -325,25 +322,25 @@ func (c *Client) GenerateTests(ctx context.Context, target Target, opts ...TaskO
 // This is a general-purpose code transformation primitive used for fixes,
 // refactors, and targeted rewrites.
 func (c *Client) Edit(ctx context.Context, target Target, prompt string, opts ...TaskOption) (TaskResult, error) {
-	return c.runTargetTask(ctx, target, prompt, prompts.TemplateEdit, opts)
+	return c.runTargetTask(ctx, target, prompt, prompts.TemplateEdit, opts...)
 }
 
 // Fix attempts to correct bugs or incorrect behavior in the given target.
 // It applies minimal changes required to restore correctness without refactoring.
 func (c *Client) Fix(ctx context.Context, target Target, opts ...TaskOption) (TaskResult, error) {
-	return c.runTargetTask(ctx, target, "", prompts.TemplateFix, opts)
+	return c.runTargetTask(ctx, target, "", prompts.TemplateFix, opts...)
 }
 
 // Refactor improves code structure and readability without changing behavior.
 // It focuses on maintainability, clarity, and idiomatic style.
 func (c *Client) Refactor(ctx context.Context, target Target, opts ...TaskOption) (TaskResult, error) {
-	return c.runTargetTask(ctx, target, "", prompts.TemplateRefactor, opts)
+	return c.runTargetTask(ctx, target, "", prompts.TemplateRefactor, opts...)
 }
 
 // Comment adds or improves code comments to explain intent and non-obvious logic.
 // It does not modify code behavior.
 func (c *Client) Comment(ctx context.Context, target Target, opts ...TaskOption) (TaskResult, error) {
-	return c.runTargetTask(ctx, target, "", prompts.TemplateComment, opts)
+	return c.runTargetTask(ctx, target, "", prompts.TemplateComment, opts...)
 }
 
 // runTargetTask is a shared helper for target-based LLM tasks.
@@ -356,7 +353,7 @@ func (c *Client) Comment(ctx context.Context, target Target, opts ...TaskOption)
 //
 // This function centralizes prompt construction and execution, ensuring
 // consistent behavior across all target-based commands.
-func (c *Client) runTargetTask(ctx context.Context, target Target, prompt string, template prompts.PromptTemplate, opts []TaskOption) (TaskResult, error) {
+func (c *Client) runTargetTask(ctx context.Context, target Target, prompt string, template prompts.Template, opts ...TaskOption) (TaskResult, error) {
 	taskCfg := parseTaskOptions(opts...)
 
 	results, data, err := c.retrieveFromTarget(ctx, target, taskCfg)
@@ -374,11 +371,7 @@ func (c *Client) runTargetTask(ctx context.Context, target Target, prompt string
 		}
 	}
 
-	pConfig := &prompts.Config{
-		Template:       template,
-		SystemOverride: taskCfg.prompt.systemOverride,
-		Structured:     taskCfg.prompt.structuredOutput,
-	}
+	pConfig := newPromptConfig(template, c.store.GetMemory(), &taskCfg.prompt, nil)
 	renderedPrompt, err := prompts.Render(
 		pConfig.WithTarget(target.File, target.Function, extractTarget(data, target)),
 		prompt, results...,
@@ -567,4 +560,17 @@ func mergeResults(sym, vec []retrieval.Chunk, k int) []retrieval.Chunk {
 		results = results[:k]
 	}
 	return results
+}
+
+// newPromptConfig builds a prompt.Config from the given options.
+func newPromptConfig(t prompts.Template, memory store.Memory, opts *promptTaskOptions, summary *string) *prompts.Config {
+	c := &prompts.Config{Template: t, Memory: memory}
+	if opts != nil {
+		c.SystemOverride = opts.systemOverride
+		c.Structured = opts.structuredOutput
+	}
+	if summary != nil {
+		c.Summary = *summary
+	}
+	return c
 }

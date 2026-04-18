@@ -151,16 +151,6 @@ func TestValidateIndex(t *testing.T) {
 	})
 }
 
-func TestGetMemory(t *testing.T) {
-	store, _ := newTestStore(t)
-
-	got, err := store.GetMemory(context.Background())
-	assert.NoError(t, err)
-	assert.Equal(t, "", got.ProjectSummary)
-	assert.Equal(t, []string{}, got.Topics)
-	assert.Equal(t, []string{}, got.Preferences)
-}
-
 func TestCommitMemoryUpdate(t *testing.T) {
 	store, _ := newTestStore(t)
 
@@ -188,7 +178,7 @@ func TestCommitMemoryUpdate(t *testing.T) {
 	assert.NoError(t, err)
 
 	// verify memory updated
-	gotMem, err := store.GetMemory(context.Background())
+	gotMem, err := store.getMemory(context.Background())
 	assert.NoError(t, err)
 
 	assert.Equal(t, updated.ProjectSummary, gotMem.ProjectSummary)
@@ -216,6 +206,55 @@ func TestSaveLoad(t *testing.T) {
 	store2.EnsureLoaded()
 	assert.Equal(t, 1, len(store2.Items))
 	assert.Equal(t, "summary", store2.Summary)
+}
+
+func Test_getMemory(t *testing.T) {
+	store, _ := newTestStore(t)
+
+	got, err := store.getMemory(context.Background())
+	assert.NoError(t, err)
+	assert.Equal(t, "", got.ProjectSummary)
+	assert.Equal(t, []string{}, got.Topics)
+	assert.Equal(t, []string{}, got.Preferences)
+}
+
+func Test_init(t *testing.T) {
+	store, _ := newTestStore(t)
+	require.NoError(t, store.init())
+
+	t.Run("memory table exists", func(t *testing.T) {
+		var name string
+		err := store.db.QueryRow(`
+			SELECT name FROM sqlite_master
+			WHERE type='table' AND name='memory'
+		`).Scan(&name)
+
+		require.NoError(t, err)
+		require.Equal(t, "memory", name)
+	})
+
+	t.Run("memory queue table exists", func(t *testing.T) {
+		var name string
+		err := store.db.QueryRow(`
+			SELECT name FROM sqlite_master
+			WHERE type='table' AND name='memory_queue'
+		`).Scan(&name)
+
+		require.NoError(t, err)
+		require.Equal(t, "memory_queue", name)
+	})
+
+	t.Run("memory is seeded", func(t *testing.T) {
+		var count int
+		err := store.db.QueryRow(`SELECT COUNT(*) FROM memory WHERE id = 1`).Scan(&count)
+		require.NoError(t, err)
+		require.Equal(t, 1, count)
+	})
+
+	t.Run("memory cache is loaded", func(t *testing.T) {
+		mem := store.GetMemory()
+		require.NotNil(t, mem) // or compare to expected empty struct
+	})
 }
 
 func Test_ensureMetadata(t *testing.T) {

@@ -2,6 +2,7 @@ package prompts
 
 import (
 	"coolaid/internal/retrieval"
+	"coolaid/internal/store"
 	"flag"
 	"os"
 	"path/filepath"
@@ -94,6 +95,24 @@ func TestRender(t *testing.T) {
 			prompt:  "Make this function return a boolean",
 			context: nil,
 			golden:  "with_target.golden",
+		},
+		"with memory": {
+			cfg: &Config{
+				Template: TemplateEdit,
+				Memory: store.Memory{
+					ProjectSummary: "Use assert library for testing",
+					Topics:         []string{"assert", "testify"},
+					Preferences:    []string{"assertions"},
+				},
+				Target: Target{
+					Type: TargetFunction,
+					Name: "TestFunc",
+					Body: "func TestFunc(t *testing.T) {}",
+				},
+			},
+			prompt:  "Change this test to use test driven development",
+			context: nil,
+			golden:  "with_memory.golden",
 		},
 	}
 

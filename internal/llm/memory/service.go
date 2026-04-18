@@ -45,7 +45,7 @@ type extraction struct {
 }
 
 type Store interface {
-	GetMemory(ctx context.Context) (store.Memory, error)
+	GetMemory() store.Memory
 	CommitMemoryUpdate(ctx context.Context, m store.Memory, ids []string) error
 
 	GetMemoryQueue(ctx context.Context) ([]store.MemoryQueueItem, error)
@@ -135,11 +135,7 @@ func (s *service) FlushMemory(ctx context.Context) (int, error) {
 		return 0, nil
 	}
 
-	mem, err := s.store.GetMemory(ctx)
-	if err != nil {
-		slog.Warn("[memory] failed to load memory", slog.String("error", err.Error()))
-		return 0, err
-	}
+	mem := s.store.GetMemory()
 
 	var processed int
 	var itemsIDs []string
@@ -150,7 +146,7 @@ func (s *service) FlushMemory(ctx context.Context) (int, error) {
 
 		in, err := fromQueueItem(it)
 		if err != nil {
-			slog.Warn("[memory] failed to parse persisted queue item", slog.String("error", err.Error()), slog.Any("it", it))
+			slog.Warn("[memory] failed to parse persisted queue item", slog.String("error", err.Error()))
 			continue
 		}
 

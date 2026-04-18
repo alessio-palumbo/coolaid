@@ -3,6 +3,7 @@ package prompts
 import (
 	"bytes"
 	"coolaid/internal/retrieval"
+	"coolaid/internal/store"
 	"embed"
 	"fmt"
 	"text/template"
@@ -82,6 +83,7 @@ func init() {
 type Config struct {
 	Template       PromptTemplate
 	SystemOverride string
+	Memory         store.Memory
 	Structured     bool
 	Summary        string
 	Target         Target
@@ -113,12 +115,13 @@ type Target struct {
 
 type templateData struct {
 	System                 string
+	Memory                 store.Memory
 	StructuredInstructions string
 	Formatting             string
-	Prompt                 string
-	ContextChunks          []retrieval.Chunk
 	Summary                string
 	Target                 Target
+	ContextChunks          []retrieval.Chunk
+	Prompt                 string
 }
 
 func Render(cfg *Config, prompt string, context ...retrieval.Chunk) (string, error) {
@@ -133,11 +136,12 @@ func Render(cfg *Config, prompt string, context ...retrieval.Chunk) (string, err
 
 	td := templateData{
 		System:        cfg.SystemOverride,
+		Memory:        cfg.Memory,
 		Formatting:    formattingDirectives,
-		Prompt:        prompt,
-		ContextChunks: context,
 		Summary:       cfg.Summary,
 		Target:        cfg.Target,
+		ContextChunks: context,
+		Prompt:        prompt,
 	}
 
 	if cfg.Structured {
@@ -145,7 +149,6 @@ func Render(cfg *Config, prompt string, context ...retrieval.Chunk) (string, err
 	}
 
 	var buf bytes.Buffer
-
 	if err := tmpl.ExecuteTemplate(&buf, "base", td); err != nil {
 		return "", err
 	}
