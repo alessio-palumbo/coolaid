@@ -21,7 +21,7 @@ func SummarizeCommand(client *ai.Client, sw *spinner.StreamWriter) *cli.Command 
 			}
 
 			return spinner.WrapError(sw, func() error {
-				if err := client.Summarize(ctx, target.File); err != nil {
+				if _, err := client.Summarize(ctx, target); err != nil {
 					return err
 				}
 				fmt.Println()

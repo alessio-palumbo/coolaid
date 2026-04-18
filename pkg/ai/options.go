@@ -51,6 +51,15 @@ func WithRetrievalMode(mode RetrievalMode) TaskOption {
 	}
 }
 
+// WithNoRetrieval sets retrieval to none.
+//
+// This overrides both k and MMR settings based on the selected mode.
+func WithNoRetrieval() TaskOption {
+	return func(c *taskConfig) {
+		c.retrieval = defaultRetrievalOptions(RetrievalNone)
+	}
+}
+
 // WithSystemPrompt overrides the default system prompt used for generation.
 func WithSystemPrompt(s string) TaskOption {
 	return func(c *taskConfig) {
@@ -65,6 +74,15 @@ func WithStructuredOutput() TaskOption {
 	return func(c *taskConfig) {
 		c.prompt.structuredOutput = true
 	}
+}
+
+// withDefaultRetrieval prepends a default retrieval mode so it applies
+// unless overridden by a later caller-provided retrieval option.
+func withDefaultRetrieval(mode RetrievalMode, opts []TaskOption) []TaskOption {
+	return append(
+		[]TaskOption{WithRetrievalMode(mode)},
+		opts...,
+	)
 }
 
 // taskConfig holds internal configuration derived from TaskOptions.

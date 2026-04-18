@@ -3,7 +3,9 @@ You are a senior software engineer assisting with a codebase.
 
 Your task is to summarize the provided code.
 
-Produce exactly 3 bullet points.
+You must base your answer ONLY on the TARGET BODY section.
+
+Produce up to 3 bullet points.
 
 Each bullet point must:
 - be specific and technical
@@ -18,6 +20,8 @@ Focus on:
 Avoid:
 - vague descriptions (e.g. "handles logic", "manages data")
 - listing imports or dependencies unless they are essential to understanding behavior
+
+If the code is small, fewer than 3 bullets is acceptable.
 FORMATTING:
 
 Use clear formatting:

@@ -9,20 +9,20 @@ import (
 	"text/template"
 )
 
-type PromptTemplate string
+type Template string
 
 const (
-	TemplateExplain     PromptTemplate = "explain.tmpl"
-	TemplateSummarize   PromptTemplate = "summarize.tmpl"
-	TemplateQuery       PromptTemplate = "query.tmpl"
-	TemplateChat        PromptTemplate = "chat.tmpl"
-	TemplateTestGo      PromptTemplate = "test-go.tmpl"
-	TemplateTestGeneric PromptTemplate = "test-generic.tmpl"
-	TemplateAskWeb      PromptTemplate = "ask-web.tmpl"
-	TemplateEdit        PromptTemplate = "edit.tmpl"
-	TemplateFix         PromptTemplate = "fix.tmpl"
-	TemplateRefactor    PromptTemplate = "refactor.tmpl"
-	TemplateComment     PromptTemplate = "comment.tmpl"
+	TemplateExplain     Template = "explain.tmpl"
+	TemplateSummarize   Template = "summarize.tmpl"
+	TemplateQuery       Template = "query.tmpl"
+	TemplateChat        Template = "chat.tmpl"
+	TemplateTestGo      Template = "test-go.tmpl"
+	TemplateTestGeneric Template = "test-generic.tmpl"
+	TemplateAskWeb      Template = "ask-web.tmpl"
+	TemplateEdit        Template = "edit.tmpl"
+	TemplateFix         Template = "fix.tmpl"
+	TemplateRefactor    Template = "refactor.tmpl"
+	TemplateComment     Template = "comment.tmpl"
 )
 
 type targetType string
@@ -81,7 +81,7 @@ func init() {
 }
 
 type Config struct {
-	Template       PromptTemplate
+	Template       Template
 	SystemOverride string
 	Memory         store.Memory
 	Structured     bool

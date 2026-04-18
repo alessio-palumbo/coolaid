@@ -145,6 +145,16 @@ func (c *Client) Index(ctx context.Context, onProgress func(IndexProgress), onCo
 	return nil
 }
 
+// FlushMemory processes all pending memory queue items.
+//
+// It loads persisted interactions, runs extraction, updates the memory store,
+// and removes successfully processed entries. It returns the number of items
+// successfully processed. Processing is best-effort and may take time depending
+// on LLM latency.
+func (c *Client) FlushMemory(ctx context.Context) (int, error) {
+	return c.memory.FlushMemory(ctx)
+}
+
 type AskOptions struct {
 	UseWeb      bool
 	SearchLimit int
@@ -176,33 +186,6 @@ func (c *Client) Ask(ctx context.Context, prompt string, opts AskOptions) error 
 	return c.memory.Capture(c.writer, prompt, func(w io.Writer) error {
 		return c.llm.GenerateStream(ctx, prompt, w)
 	})
-}
-
-// FlushMemory processes all pending memory queue items.
-//
-// It loads persisted interactions, runs extraction, updates the memory store,
-// and removes successfully processed entries. It returns the number of items
-// successfully processed. Processing is best-effort and may take time depending
-// on LLM latency.
-func (c *Client) FlushMemory(ctx context.Context) (int, error) {
-	return c.memory.FlushMemory(ctx)
-}
-
-// Summarize generates a summary of the given file.
-//
-// The file content is passed directly to the LLM without retrieval.
-func (c *Client) Summarize(ctx context.Context, file string) error {
-	data, err := os.ReadFile(file)
-	if err != nil {
-		return err
-	}
-
-	prompt, err := prompts.Render(&prompts.Config{Template: prompts.TemplateSummarize}, string(data))
-	if err != nil {
-		return err
-	}
-
-	return c.llm.GenerateStream(ctx, prompt, c.writer)
 }
 
 // Search performs a semantic search against the index and writes
@@ -289,6 +272,12 @@ func (c *Client) Query(ctx context.Context, prompt string, opts ...TaskOption) (
 	})
 }
 
+// Summarize generates a summary of a Target file.
+// It disables retrieval by default.
+func (c *Client) Summarize(ctx context.Context, target Target, opts ...TaskOption) (TaskResult, error) {
+	return c.runTargetTask(ctx, target, "", prompts.TemplateSummarize, withDefaultRetrieval(RetrievalNone, opts)...)
+}
+
 // Explain analyzes a target and generates an explanation using
 // relevant context retrieved from the index.
 
@@ -308,7 +297,7 @@ func (c *Client) GenerateTests(ctx context.Context, target Target, opts ...TaskO
 	if isSupportedLanguage(target.File) {
 		template = prompts.TemplateTestGo
 	}
-	return c.runTargetTask(ctx, target, "", template, opts...)
+	return c.runTargetTask(ctx, target, "", template, withDefaultRetrieval(RetrievalNone, opts)...)
 }
 
 // Edit modifies code based on a user-provided instruction.
@@ -340,7 +329,7 @@ func (c *Client) Refactor(ctx context.Context, target Target, opts ...TaskOption
 // Comment adds or improves code comments to explain intent and non-obvious logic.
 // It does not modify code behavior.
 func (c *Client) Comment(ctx context.Context, target Target, opts ...TaskOption) (TaskResult, error) {
-	return c.runTargetTask(ctx, target, "", prompts.TemplateComment, opts...)
+	return c.runTargetTask(ctx, target, "", prompts.TemplateComment, withDefaultRetrieval(RetrievalNone, opts)...)
 }
 
 // runTargetTask is a shared helper for target-based LLM tasks.
