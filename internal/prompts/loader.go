@@ -18,7 +18,7 @@ const (
 	TemplateChat        Template = "chat.tmpl"
 	TemplateTestGo      Template = "test-go.tmpl"
 	TemplateTestGeneric Template = "test-generic.tmpl"
-	TemplateAskWeb      Template = "ask-web.tmpl"
+	TemplateAsk         Template = "ask.tmpl"
 	TemplateEdit        Template = "edit.tmpl"
 	TemplateFix         Template = "fix.tmpl"
 	TemplateRefactor    Template = "refactor.tmpl"
@@ -67,7 +67,7 @@ func init() {
 		string(TemplateChat),
 		string(TemplateTestGo),
 		string(TemplateTestGeneric),
-		string(TemplateAskWeb),
+		string(TemplateAsk),
 		string(TemplateEdit),
 		string(TemplateFix),
 		string(TemplateRefactor),

@@ -26,6 +26,15 @@ const (
 	IndexStale
 )
 
+// LLM defines the language model operations used by task execution,
+// supporting both buffered and streaming generation, as well as chat as embedding.
+type LLM interface {
+	Generate(ctx context.Context, prompt string) (string, error)
+	GenerateStream(ctx context.Context, prompt string, writer io.Writer) error
+	ChatStream(ctx context.Context, messages []llm.Message, writer io.Writer) (string, error)
+	Embed(ctx context.Context, text string) ([]float64, error)
+}
+
 // Memory defines the interface for asynchronous project memory management.
 //
 // It accepts interaction inputs for background processing and supports

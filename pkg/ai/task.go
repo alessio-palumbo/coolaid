@@ -87,6 +87,85 @@ type IndexResult struct {
 	Elapsed       time.Duration
 }
 
+// task represents an internal execution unit for LLM-based operations.
+//
+// It encapsulates all inputs required to build a prompt (target, template,
+// and prompt text), configuration options (retrieval, formatting, etc.),
+// and optional post-processing handlers that operate on the final LLM output.
+//
+// If no handlers are provided, the task runs in streaming mode.
+// If handlers are present, the full response is generated and passed to them.
+type task struct {
+	UserPrompt string
+	Template   prompts.Template
+	Target     Target
+	TargetBody string
+	Summary    string
+	config     *taskConfig
+}
+
+// newTask constructs an internal task and applies all TaskOptions,
+// producing a parsed task configuration ready for execution.
+func newTask(userPrompt string, tmpl prompts.Template, opts ...TaskOption) task {
+	return task{
+		UserPrompt: userPrompt,
+		Template:   tmpl,
+		config:     parseTaskOptions(opts...),
+	}
+}
+
+// withTarget associates a target file or function with the task
+// and returns the updated task.
+func (t task) withTarget(target Target) task {
+	t.Target = target
+	return t
+}
+
+// buildPrompt renders the final LLM prompt using the task template,
+// memory state, optional retrieval chunks, and any derived task inputs
+// such as repository summary or target body.
+// It returns a fully formatted prompt ready for execution.
+func (t task) buildPrompt(memory store.Memory, chunks ...retrieval.Chunk) (string, error) {
+	cfg := &prompts.Config{
+		Template:       t.Template,
+		Memory:         memory,
+		SystemOverride: t.config.prompt.systemOverride,
+		Structured:     t.config.prompt.structuredOutput,
+		Summary:        t.Summary,
+	}
+	if t.TargetBody != "" {
+		cfg = cfg.WithTarget(t.Target.File, t.Target.Function, t.TargetBody)
+	}
+	return prompts.Render(cfg, t.UserPrompt, chunks...)
+}
+
+// execute runs the task using streaming mode by default.
+//
+// If result handlers are configured, it switches to buffered generation
+// and passes the final output to each handler.
+func (t task) execute(ctx context.Context, llm LLM, w io.Writer, prompt string) error {
+	if len(t.config.handlers) > 0 {
+		out, err := llm.Generate(ctx, prompt)
+		if err != nil {
+			return err
+		}
+		return t.runHandlers(ctx, out)
+	}
+
+	return llm.GenerateStream(ctx, prompt, w)
+}
+
+// runHandlers invokes all configured result handlers in order,
+// passing each the final generated output.
+func (t task) runHandlers(ctx context.Context, out string) error {
+	for _, h := range t.config.handlers {
+		if err := h.Handle(ctx, out); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // Index builds a fresh index for the configured project.
 //
 // It clears any existing index, scans the project, generates embeddings,
@@ -155,36 +234,34 @@ func (c *Client) FlushMemory(ctx context.Context) (int, error) {
 	return c.memory.FlushMemory(ctx)
 }
 
-type AskOptions struct {
-	UseWeb      bool
-	SearchLimit int
-}
-
 // Ask sends a raw prompt directly to the LLM and streams the response.
 //
 // This bypasses the index and does not perform any retrieval.
-func (c *Client) Ask(ctx context.Context, prompt string, opts AskOptions) error {
-	if prompt == "" {
+// Supported TaskOptions:
+//   - WithWebSearch
+//   - WithResultHandler
+func (c *Client) Ask(ctx context.Context, userPrompt string, opts ...TaskOption) error {
+	if userPrompt == "" {
 		return ErrEmptyPrompt
 	}
 
-	if opts.UseWeb && opts.SearchLimit > 0 {
-		chunks, err := web.NewPipeline(opts.SearchLimit).Run(ctx, prompt)
-		if err != nil {
-			return err
-		}
-
-		prompt, err = prompts.Render(
-			newPromptConfig(prompts.TemplateQuery, c.store.GetMemory(), nil, nil),
-			prompt, chunks...,
-		)
+	task := newTask(userPrompt, prompts.TemplateAsk, opts...)
+	var chunks []retrieval.Chunk
+	if l := task.config.web.searchLimit; l > 0 {
+		var err error
+		chunks, err = web.NewPipeline(l).Run(ctx, task.UserPrompt)
 		if err != nil {
 			return err
 		}
 	}
 
-	return c.memory.Capture(c.writer, prompt, func(w io.Writer) error {
-		return c.llm.GenerateStream(ctx, prompt, w)
+	renderedPrompt, err := task.buildPrompt(c.store.GetMemory(), chunks...)
+	if err != nil {
+		return err
+	}
+
+	return c.memory.Capture(c.writer, task.UserPrompt, func(w io.Writer) error {
+		return task.execute(ctx, c.llm, w, renderedPrompt)
 	})
 }
 
@@ -192,13 +269,13 @@ func (c *Client) Ask(ctx context.Context, prompt string, opts AskOptions) error 
 // the matching results to the configured writer.
 //
 // It does not invoke the LLM.
-func (c *Client) Search(ctx context.Context, prompt string, opts ...TaskOption) (TaskResult, error) {
-	if prompt == "" {
+func (c *Client) Search(ctx context.Context, userPrompt string, opts ...TaskOption) (TaskResult, error) {
+	if userPrompt == "" {
 		return TaskResult{}, ErrEmptyPrompt
 	}
 
 	taskCfg := parseTaskOptions(opts...)
-	results, err := c.doSearch(ctx, prompt, taskCfg.retrieval.k, taskCfg.retrieval.useMMR, false)
+	results, err := c.doSearch(ctx, userPrompt, taskCfg.retrieval, false)
 	if err != nil {
 		return TaskResult{}, err
 	}
@@ -224,13 +301,13 @@ func (c *Client) Search(ctx context.Context, prompt string, opts ...TaskOption) 
 //   - streams the final answer via the LLM
 //
 // If no relevant results are found, TaskResult.Status.NoResults is set.
-func (c *Client) Query(ctx context.Context, prompt string, opts ...TaskOption) (TaskResult, error) {
-	if prompt == "" {
+func (c *Client) Query(ctx context.Context, userPrompt string, opts ...TaskOption) (TaskResult, error) {
+	if userPrompt == "" {
 		return TaskResult{}, ErrEmptyPrompt
 	}
 
-	taskCfg := parseTaskOptions(opts...)
-	searchPrompt := prompt
+	task := newTask(userPrompt, prompts.TemplateQuery, opts...)
+	searchPrompt := task.UserPrompt
 
 	var usedSummary bool
 	if !query.IsSearchable(searchPrompt) {
@@ -240,42 +317,41 @@ func (c *Client) Query(ctx context.Context, prompt string, opts ...TaskOption) (
 		usedSummary = true
 	}
 
-	results, err := c.doSearch(ctx, searchPrompt, taskCfg.retrieval.k, taskCfg.retrieval.useMMR, false)
+	chunks, err := c.doSearch(ctx, searchPrompt, task.config.retrieval, false)
 	if err != nil {
 		return TaskResult{}, err
 	}
 
-	if shouldRetry(results) && !usedSummary {
+	if shouldRetry(chunks) && !usedSummary {
 		searchPrompt = enrichWithSummary(searchPrompt, c.store.Summary)
 		usedSummary = true
 
-		results, err = c.semanticSearch(ctx, searchPrompt, taskCfg.retrieval.k, taskCfg.retrieval.useMMR)
+		chunks, err = c.semanticSearch(ctx, searchPrompt, task.config.retrieval.k, task.config.retrieval.useMMR)
 		if err != nil {
 			return TaskResult{}, err
 		}
 	}
-	if len(results) == 0 {
+	if len(chunks) == 0 {
 		return TaskResult{Status: TaskStatus{NoResults: true}}, nil
 	}
 
-	pConfig := newPromptConfig(prompts.TemplateQuery, c.store.GetMemory(), &taskCfg.prompt, nil)
 	if usedSummary {
-		pConfig.Summary = c.store.Summary
+		task.Summary = c.store.Summary
 	}
-	renderedPrompt, err := prompts.Render(pConfig, prompt, results...)
+	renderedPrompt, err := task.buildPrompt(c.store.GetMemory(), chunks...)
 	if err != nil {
 		return TaskResult{}, err
 	}
 
-	return TaskResult{}, c.memory.Capture(c.writer, prompt, func(w io.Writer) error {
-		return c.llm.GenerateStream(ctx, renderedPrompt, c.writer)
+	return TaskResult{}, c.memory.Capture(c.writer, task.UserPrompt, func(w io.Writer) error {
+		return task.execute(ctx, c.llm, w, renderedPrompt)
 	})
 }
 
 // Summarize generates a summary of a Target file.
 // It disables retrieval by default.
 func (c *Client) Summarize(ctx context.Context, target Target, opts ...TaskOption) (TaskResult, error) {
-	return c.runTargetTask(ctx, target, "", prompts.TemplateSummarize, withDefaultRetrieval(RetrievalNone, opts)...)
+	return c.runTargetTask(ctx, newTask("", prompts.TemplateSummarize, withDefaultRetrieval(RetrievalNone, opts)...).withTarget(target))
 }
 
 // Explain analyzes a target and generates an explanation using
@@ -285,7 +361,7 @@ func (c *Client) Summarize(ctx context.Context, target Target, opts ...TaskOptio
 // and excludes the target file itself from the retrieved context
 // to avoid redundant information.
 func (c *Client) Explain(ctx context.Context, target Target, opts ...TaskOption) (TaskResult, error) {
-	return c.runTargetTask(ctx, target, "", prompts.TemplateExplain, opts...)
+	return c.runTargetTask(ctx, newTask("", prompts.TemplateExplain, opts...).withTarget(target))
 }
 
 // GenerateTests generates tests for a given target.
@@ -297,7 +373,8 @@ func (c *Client) GenerateTests(ctx context.Context, target Target, opts ...TaskO
 	if isSupportedLanguage(target.File) {
 		template = prompts.TemplateTestGo
 	}
-	return c.runTargetTask(ctx, target, "", template, withDefaultRetrieval(RetrievalNone, opts)...)
+
+	return c.runTargetTask(ctx, newTask("", template, withDefaultRetrieval(RetrievalNone, opts)...).withTarget(target))
 }
 
 // Edit modifies code based on a user-provided instruction.
@@ -310,26 +387,26 @@ func (c *Client) GenerateTests(ctx context.Context, target Target, opts ...TaskO
 //
 // This is a general-purpose code transformation primitive used for fixes,
 // refactors, and targeted rewrites.
-func (c *Client) Edit(ctx context.Context, target Target, prompt string, opts ...TaskOption) (TaskResult, error) {
-	return c.runTargetTask(ctx, target, prompt, prompts.TemplateEdit, opts...)
+func (c *Client) Edit(ctx context.Context, target Target, userPrompt string, opts ...TaskOption) (TaskResult, error) {
+	return c.runTargetTask(ctx, newTask(userPrompt, prompts.TemplateExplain, opts...).withTarget(target))
 }
 
 // Fix attempts to correct bugs or incorrect behavior in the given target.
 // It applies minimal changes required to restore correctness without refactoring.
 func (c *Client) Fix(ctx context.Context, target Target, opts ...TaskOption) (TaskResult, error) {
-	return c.runTargetTask(ctx, target, "", prompts.TemplateFix, opts...)
+	return c.runTargetTask(ctx, newTask("", prompts.TemplateFix, opts...).withTarget(target))
 }
 
 // Refactor improves code structure and readability without changing behavior.
 // It focuses on maintainability, clarity, and idiomatic style.
 func (c *Client) Refactor(ctx context.Context, target Target, opts ...TaskOption) (TaskResult, error) {
-	return c.runTargetTask(ctx, target, "", prompts.TemplateRefactor, opts...)
+	return c.runTargetTask(ctx, newTask("", prompts.TemplateRefactor, opts...).withTarget(target))
 }
 
 // Comment adds or improves code comments to explain intent and non-obvious logic.
 // It does not modify code behavior.
 func (c *Client) Comment(ctx context.Context, target Target, opts ...TaskOption) (TaskResult, error) {
-	return c.runTargetTask(ctx, target, "", prompts.TemplateComment, withDefaultRetrieval(RetrievalNone, opts)...)
+	return c.runTargetTask(ctx, newTask("", prompts.TemplateComment, withDefaultRetrieval(RetrievalNone, opts)...).withTarget(target))
 }
 
 // runTargetTask is a shared helper for target-based LLM tasks.
@@ -342,34 +419,29 @@ func (c *Client) Comment(ctx context.Context, target Target, opts ...TaskOption)
 //
 // This function centralizes prompt construction and execution, ensuring
 // consistent behavior across all target-based commands.
-func (c *Client) runTargetTask(ctx context.Context, target Target, prompt string, template prompts.Template, opts ...TaskOption) (TaskResult, error) {
-	taskCfg := parseTaskOptions(opts...)
-
-	results, data, err := c.retrieveFromTarget(ctx, target, taskCfg)
+func (c *Client) runTargetTask(ctx context.Context, t task) (TaskResult, error) {
+	chunks, data, err := c.retrieveFromTarget(ctx, t.Target, t.config)
 	if err != nil {
 		return TaskResult{}, err
 	}
 
 	// Exclude any chunks matching the file to avoid wasting tokens unless function is defined.
-	if target.Function == "" {
-		for i := 0; i < len(results); i++ {
-			if strings.Contains(results[i].Source, target.File) {
-				results = slices.Delete(results, i, i+1)
+	if t.Target.Function == "" {
+		for i := 0; i < len(chunks); i++ {
+			if strings.Contains(chunks[i].Source, t.Target.File) {
+				chunks = slices.Delete(chunks, i, i+1)
 				i--
 			}
 		}
 	}
 
-	pConfig := newPromptConfig(template, c.store.GetMemory(), &taskCfg.prompt, nil)
-	renderedPrompt, err := prompts.Render(
-		pConfig.WithTarget(target.File, target.Function, extractTarget(data, target)),
-		prompt, results...,
-	)
+	t.TargetBody = extractTarget(data, t.Target)
+	renderedPrompt, err := t.buildPrompt(c.store.GetMemory(), chunks...)
 	if err != nil {
 		return TaskResult{}, err
 	}
 
-	return TaskResult{}, c.llm.GenerateStream(ctx, renderedPrompt, c.writer)
+	return TaskResult{}, t.execute(ctx, c.llm, c.writer, renderedPrompt)
 }
 
 // doSearch retrieves relevant chunks for a given prompt using a symbol-first strategy.
@@ -388,41 +460,41 @@ func (c *Client) runTargetTask(ctx context.Context, target Target, prompt string
 //
 // This approach balances deterministic identifier-based retrieval with semantic
 // similarity, while limiting noise and preserving result count expectations.
-func (c *Client) doSearch(ctx context.Context, prompt string, k int, useMMR bool, preferSymbol bool) ([]retrieval.Chunk, error) {
+func (c *Client) doSearch(ctx context.Context, userPrompt string, opts retrievalOptions, preferSymbol bool) ([]retrieval.Chunk, error) {
 	var symbolResults []retrieval.Chunk
-	for _, sym := range query.ExtractIdentifiers(prompt) {
-		results, err := c.store.FindBySymbol(prompt, sym, k)
+	for _, sym := range query.ExtractIdentifiers(userPrompt) {
+		results, err := c.store.FindBySymbol(userPrompt, sym, opts.k)
 		if err != nil {
 			return nil, err
 		}
 		symbolResults = append(symbolResults, results...)
 	}
 
-	if len(symbolResults) > 0 && (preferSymbol || len(symbolResults) >= k) {
+	if len(symbolResults) > 0 && (preferSymbol || len(symbolResults) >= opts.k) {
 		return symbolResults, nil
 	}
 
 	// compute semantic budget
-	semanticK := k
+	semanticK := opts.k
 	if len(symbolResults) > 0 {
-		semanticK = k - len(symbolResults)
+		semanticK -= len(symbolResults)
 	}
-	semanticResults, err := c.semanticSearch(ctx, prompt, semanticK, useMMR)
+	semanticResults, err := c.semanticSearch(ctx, userPrompt, semanticK, opts.useMMR)
 	if err != nil {
 		return nil, err
 	}
 	if len(symbolResults) == 0 {
 		return semanticResults, nil
 	}
-	return mergeResults(symbolResults, semanticResults, k), nil
+	return mergeResults(symbolResults, semanticResults, opts.k), nil
 }
 
 // semanticSearch performs a vector similarity search against the index.
 //
 // It embeds the prompt and retrieves the top-k most relevant chunks.
 // If useMMR is true, Max Marginal Relevance is applied to improve diversity.
-func (c *Client) semanticSearch(ctx context.Context, prompt string, k int, useMMR bool) ([]retrieval.Chunk, error) {
-	queryVec, err := c.llm.Embed(ctx, prompt)
+func (c *Client) semanticSearch(ctx context.Context, userPrompt string, k int, useMMR bool) ([]retrieval.Chunk, error) {
+	queryVec, err := c.llm.Embed(ctx, userPrompt)
 	if err != nil {
 		return nil, err
 	}
@@ -462,7 +534,7 @@ func (c *Client) retrieveFromTarget(ctx context.Context, target Target, taskCfg 
 
 	// Find dependencies chunks to pass as dependencies to LLM.
 	signals := query.ExtractSignals(target.File, data, false)
-	results, err := c.doSearch(ctx, signals, taskCfg.retrieval.k, taskCfg.retrieval.useMMR, false)
+	results, err := c.doSearch(ctx, signals, taskCfg.retrieval, false)
 	return results, data, err
 }
 
@@ -549,17 +621,4 @@ func mergeResults(sym, vec []retrieval.Chunk, k int) []retrieval.Chunk {
 		results = results[:k]
 	}
 	return results
-}
-
-// newPromptConfig builds a prompt.Config from the given options.
-func newPromptConfig(t prompts.Template, memory store.Memory, opts *promptTaskOptions, summary *string) *prompts.Config {
-	c := &prompts.Config{Template: t, Memory: memory}
-	if opts != nil {
-		c.SystemOverride = opts.systemOverride
-		c.Structured = opts.structuredOutput
-	}
-	if summary != nil {
-		c.Summary = *summary
-	}
-	return c
 }

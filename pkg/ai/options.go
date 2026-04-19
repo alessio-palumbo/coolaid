@@ -1,5 +1,7 @@
 package ai
 
+import "context"
+
 // RetrievalMode defines predefined strategies for semantic retrieval.
 //
 // It controls how many results are fetched and whether diversification
@@ -21,6 +23,12 @@ const (
 	// and enabling MMR for better coverage.
 	RetrievalDeep RetrievalMode = "deep"
 )
+
+// ResultHandler processes the final generated output after task execution,
+// allowing optional post-processing such as file writes or memory updates.
+type ResultHandler interface {
+	Handle(ctx context.Context, output string) error
+}
 
 // TaskOption configures the behavior of a task (e.g. Query, Chat, Explain).
 //
@@ -76,6 +84,22 @@ func WithStructuredOutput() TaskOption {
 	}
 }
 
+// WithResultHandler registers a post-processing handler to run after
+// buffered task execution completes.
+func WithResultHandler(h ResultHandler) TaskOption {
+	return func(c *taskConfig) {
+		c.handlers = append(c.handlers, h)
+	}
+}
+
+// WithWebSearch enables web search augmentation and sets the maximum
+// number of search results to include in the prompt.
+func WithWebSearch(searchLimit int) TaskOption {
+	return func(c *taskConfig) {
+		c.web.searchLimit = searchLimit
+	}
+}
+
 // withDefaultRetrieval prepends a default retrieval mode so it applies
 // unless overridden by a later caller-provided retrieval option.
 func withDefaultRetrieval(mode RetrievalMode, opts []TaskOption) []TaskOption {
@@ -89,6 +113,8 @@ func withDefaultRetrieval(mode RetrievalMode, opts []TaskOption) []TaskOption {
 type taskConfig struct {
 	retrieval retrievalOptions
 	prompt    promptTaskOptions
+	web       webOptions
+	handlers  []ResultHandler
 }
 
 // retrievalOptions controls how semantic search is performed.
@@ -109,6 +135,11 @@ type promptTaskOptions struct {
 	// structuredOutput enables structured (machine-readable) responses
 	// when supported by the underlying prompt/template.
 	structuredOutput bool
+}
+
+// webOptions controls optional web search augmentation for tasks.
+type webOptions struct {
+	searchLimit int
 }
 
 // defaultRetrievalOptions returns default retrieval settings for a given mode.
@@ -135,7 +166,9 @@ func parseTaskOptions(opts ...TaskOption) *taskConfig {
 	}
 
 	for _, opt := range opts {
-		opt(&cfg)
+		if opt != nil {
+			opt(&cfg)
+		}
 	}
 
 	return &cfg

@@ -22,7 +22,7 @@ func AskCommand(client *ai.Client, sw *spinner.StreamWriter) *cli.Command {
 			prompt := strings.TrimSpace(strings.Join(c.Args().Slice(), " "))
 
 			return spinner.WrapError(sw, func() error {
-				if err := client.Ask(ctx, prompt, withWebOptions(c)); err != nil {
+				if err := client.Ask(ctx, prompt, withWebOption(c)...); err != nil {
 					return err
 				}
 				fmt.Println()

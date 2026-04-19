@@ -64,16 +64,13 @@ func withRagOption(c *cli.Command) []ai.TaskOption {
 	return nil
 }
 
-func withSearchOptions(c *cli.Command) []ai.TaskOption {
-	return []ai.TaskOption{ai.WithTopK(c.Int("k")), ai.WithMMR(c.Bool("mmr"))}
+func withWebOption(c *cli.Command) []ai.TaskOption {
+	if l := c.Int("web"); l > 0 {
+		return []ai.TaskOption{ai.WithWebSearch(max(minSearchLimit, min(l, maxSearchLimit)))}
+	}
+	return nil
 }
 
-func withWebOptions(c *cli.Command) ai.AskOptions {
-	if l := c.Int("web"); l > 0 {
-		return ai.AskOptions{
-			UseWeb:      true,
-			SearchLimit: max(minSearchLimit, min(l, maxSearchLimit)),
-		}
-	}
-	return ai.AskOptions{UseWeb: false}
+func withSearchOptions(c *cli.Command) []ai.TaskOption {
+	return []ai.TaskOption{ai.WithTopK(c.Int("k")), ai.WithMMR(c.Bool("mmr"))}
 }

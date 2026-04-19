@@ -90,9 +90,9 @@ func NewService(store Store, llm LLM) *service {
 
 // Capture runs a streaming operation while capturing its output.
 //
-// The output is written to the provided writer AND buffered internally.
-// After successful completion, the captured output is persisted to the
-// memory queue for later processing.
+// The output is written to the provided writer and buffered internally.
+// After successful completion, captured output is persisted to the memory
+// queue for later processing. If no output is captured, persistence is skipped.
 //
 // This method is non-blocking with respect to memory updates. Extraction
 // and persistence of memory updates are deferred to FlushMemory.
@@ -103,9 +103,14 @@ func (s *service) Capture(w io.Writer, userPrompt string, fn func(w io.Writer) e
 		return err
 	}
 
+	out := strings.TrimSpace(tw.String())
+	if out == "" {
+		return nil // nothing captured, skip enqueue
+	}
+
 	s.storeToPersistentQueue(context.Background(), Input{
 		UserInput:       userPrompt,
-		AssistantOutput: tw.String(),
+		AssistantOutput: out,
 	})
 	return nil
 }
