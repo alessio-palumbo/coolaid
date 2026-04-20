@@ -2,6 +2,7 @@ package command
 
 import (
 	"coolaid/pkg/ai"
+	"coolaid/pkg/ai/file"
 	"errors"
 	"strconv"
 	"strings"
@@ -67,6 +68,15 @@ func withRagOption(c *cli.Command) []ai.TaskOption {
 func withWebOption(c *cli.Command) []ai.TaskOption {
 	if l := c.Int("web"); l > 0 {
 		return []ai.TaskOption{ai.WithWebSearch(max(minSearchLimit, min(l, maxSearchLimit)))}
+	}
+	return nil
+}
+
+func withOutOption(c *cli.Command) []ai.TaskOption {
+	if f := c.String("out"); f != "" {
+		return []ai.TaskOption{ai.WithResultHandler(
+			file.FileAppendHandler{Target: ai.Target{File: f}}),
+		}
 	}
 	return nil
 }

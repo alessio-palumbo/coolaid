@@ -5,6 +5,7 @@ import (
 	"coolaid/pkg/ai"
 	"coolaid/pkg/spinner"
 	"fmt"
+	"slices"
 
 	"github.com/urfave/cli/v3"
 )
@@ -17,6 +18,7 @@ func TestCommand(client *ai.Client, sw *spinner.StreamWriter) *cli.Command {
 		Flags: []cli.Flag{
 			fnFlag(),
 			ragFlag(),
+			outFlag(),
 		},
 		Action: func(ctx context.Context, c *cli.Command) error {
 			target, err := parseTarget(c)
@@ -24,8 +26,9 @@ func TestCommand(client *ai.Client, sw *spinner.StreamWriter) *cli.Command {
 				return err
 			}
 
+			opts := slices.Concat(withRagOption(c), withOutOption(c))
 			return spinner.WrapError(sw, func() error {
-				if _, err := client.GenerateTests(ctx, target, withRagOption(c)...); err != nil {
+				if _, err := client.GenerateTests(ctx, target, opts...); err != nil {
 					return err
 				}
 				fmt.Println()

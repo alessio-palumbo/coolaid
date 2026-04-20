@@ -78,3 +78,11 @@ func webFlag() cli.Flag {
 		DefaultText: "0 -> web search disabled",
 	}
 }
+
+func outFlag() cli.Flag {
+	return &cli.StringFlag{
+		Name:        "out",
+		Usage:       "write output to file",
+		DefaultText: "stdout",
+	}
+}
