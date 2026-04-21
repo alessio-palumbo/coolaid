@@ -53,7 +53,7 @@ func (s *Store) ResetIndex() (err error) {
 	}
 
 	s.Items = nil
-	s.Summary = ""
+	s.summary = ""
 	return tx.Commit()
 }
 
@@ -106,7 +106,7 @@ func (s *Store) Save() (err error) {
 		}
 	}
 
-	if s.Summary != "" {
+	if s.summary != "" {
 		_, err := tx.Exec(`
 		INSERT INTO summary (project_root, content, updated_at)
 		VALUES (?, ?, ?)
@@ -114,7 +114,7 @@ func (s *Store) Save() (err error) {
 		DO UPDATE SET
 			content = excluded.content,
 			updated_at = excluded.updated_at
-			`, s.ProjectRoot, s.Summary, s.now().Format(time.RFC3339))
+			`, s.ProjectRoot, s.summary, s.now().Format(time.RFC3339))
 		if err != nil {
 			return err
 		}
@@ -177,7 +177,7 @@ func (s *Store) Load() error {
 	}
 
 	s.Items = items
-	s.Summary = summary
+	s.summary = summary
 	s.loaded = true
 	return nil
 }
@@ -228,6 +228,14 @@ func (s *Store) ValidateIndex() error {
 // GetMemory returns the loaded memory snapshot.
 func (s *Store) GetMemory() Memory {
 	return s.memory
+}
+
+// GetSummary lazy loads the summary of the project, if any.
+func (s *Store) GetSummary() (string, error) {
+	if err := s.EnsureLoaded(); err != nil {
+		return "", err
+	}
+	return s.summary, nil
 }
 
 // CommitMemoryUpdate atomically persists the updated project memory

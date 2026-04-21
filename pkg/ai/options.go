@@ -1,6 +1,8 @@
 package ai
 
-import "context"
+import (
+	"coolaid/internal/core/engine"
+)
 
 // RetrievalMode defines predefined strategies for semantic retrieval.
 //
@@ -26,27 +28,27 @@ const (
 
 // ResultHandler processes the final generated output after task execution,
 // allowing optional post-processing such as file writes or memory updates.
-type ResultHandler interface {
-	Handle(ctx context.Context, output string) error
-}
+//
+// It is defined by the engine and exposed here for API compatibility.
+type ResultHandler = engine.ResultHandler
 
 // TaskOption configures the behavior of a task (e.g. Query, Chat, Explain).
 //
 // It follows the functional options pattern and allows callers to customize
 // retrieval and prompt behavior.
-type TaskOption func(*taskConfig)
+type TaskOption func(*engine.TaskConfig)
 
 // WithTopK overrides the number of results retrieved during semantic search.
 func WithTopK(k int) TaskOption {
-	return func(c *taskConfig) {
-		c.retrieval.k = k
+	return func(c *engine.TaskConfig) {
+		c.Retrieval.K = k
 	}
 }
 
 // WithMMR enables or disables Max Marginal Relevance for retrieval.
 func WithMMR(enabled bool) TaskOption {
-	return func(c *taskConfig) {
-		c.retrieval.useMMR = enabled
+	return func(c *engine.TaskConfig) {
+		c.Retrieval.UseMMR = enabled
 	}
 }
 
@@ -54,8 +56,8 @@ func WithMMR(enabled bool) TaskOption {
 //
 // This overrides both k and MMR settings based on the selected mode.
 func WithRetrievalMode(mode RetrievalMode) TaskOption {
-	return func(c *taskConfig) {
-		c.retrieval = defaultRetrievalOptions(mode)
+	return func(c *engine.TaskConfig) {
+		c.Retrieval = defaultRetrievalOptions(mode)
 	}
 }
 
@@ -63,15 +65,15 @@ func WithRetrievalMode(mode RetrievalMode) TaskOption {
 //
 // This overrides both k and MMR settings based on the selected mode.
 func WithNoRetrieval() TaskOption {
-	return func(c *taskConfig) {
-		c.retrieval = defaultRetrievalOptions(RetrievalNone)
+	return func(c *engine.TaskConfig) {
+		c.Retrieval = defaultRetrievalOptions(RetrievalNone)
 	}
 }
 
 // WithSystemPrompt overrides the default system prompt used for generation.
 func WithSystemPrompt(s string) TaskOption {
-	return func(c *taskConfig) {
-		c.prompt.systemOverride = s
+	return func(c *engine.TaskConfig) {
+		c.Prompt.SystemOverride = s
 	}
 }
 
@@ -79,24 +81,24 @@ func WithSystemPrompt(s string) TaskOption {
 //
 // The exact format depends on the prompt template and LLM capabilities.
 func WithStructuredOutput() TaskOption {
-	return func(c *taskConfig) {
-		c.prompt.structuredOutput = true
+	return func(c *engine.TaskConfig) {
+		c.Prompt.StructuredOutput = true
 	}
 }
 
 // WithResultHandler registers a post-processing handler to run after
 // buffered task execution completes.
 func WithResultHandler(h ResultHandler) TaskOption {
-	return func(c *taskConfig) {
-		c.handlers = append(c.handlers, h)
+	return func(c *engine.TaskConfig) {
+		c.Handlers = append(c.Handlers, h)
 	}
 }
 
 // WithWebSearch enables web search augmentation and sets the maximum
 // number of search results to include in the prompt.
 func WithWebSearch(searchLimit int) TaskOption {
-	return func(c *taskConfig) {
-		c.web.searchLimit = searchLimit
+	return func(c *engine.TaskConfig) {
+		c.Web.SearchLimit = searchLimit
 	}
 }
 
@@ -109,60 +111,27 @@ func withDefaultRetrieval(mode RetrievalMode, opts []TaskOption) []TaskOption {
 	)
 }
 
-// taskConfig holds internal configuration derived from TaskOptions.
-type taskConfig struct {
-	retrieval retrievalOptions
-	prompt    promptTaskOptions
-	web       webOptions
-	handlers  []ResultHandler
-}
-
-// retrievalOptions controls how semantic search is performed.
-type retrievalOptions struct {
-	// k is the number of top results to retrieve.
-	k int
-
-	// useMMR enables Max Marginal Relevance to improve diversity
-	// among retrieved results.
-	useMMR bool
-}
-
-// promptTaskOptions controls how prompts are constructed for the LLM.
-type promptTaskOptions struct {
-	// systemOverride replaces the default system prompt used in templates.
-	systemOverride string
-
-	// structuredOutput enables structured (machine-readable) responses
-	// when supported by the underlying prompt/template.
-	structuredOutput bool
-}
-
-// webOptions controls optional web search augmentation for tasks.
-type webOptions struct {
-	searchLimit int
-}
-
 // defaultRetrievalOptions returns default retrieval settings for a given mode.
-func defaultRetrievalOptions(mode RetrievalMode) retrievalOptions {
+func defaultRetrievalOptions(mode RetrievalMode) engine.RetrievalOptions {
 	switch mode {
 	case RetrievalNone:
-		return retrievalOptions{k: 0, useMMR: false}
+		return engine.RetrievalOptions{K: 0, UseMMR: false}
 	case RetrievalDeep:
-		return retrievalOptions{k: 12, useMMR: true}
+		return engine.RetrievalOptions{K: 12, UseMMR: true}
 	case RetrievalBalanced:
-		return retrievalOptions{k: 8, useMMR: false}
+		return engine.RetrievalOptions{K: 8, UseMMR: false}
 	default:
-		return retrievalOptions{k: 5, useMMR: false}
+		return engine.RetrievalOptions{K: 5, UseMMR: false}
 	}
 }
 
 // parseTaskOptions applies the provided TaskOptions and returns
-// a fully initialized taskConfig.
+// a fully initialized engine.TaskConfig.
 //
 // By default, RetrievalBalanced mode is used unless overridden.
-func parseTaskOptions(opts ...TaskOption) *taskConfig {
-	cfg := taskConfig{
-		retrieval: defaultRetrievalOptions(RetrievalBalanced),
+func parseTaskOptions(opts ...TaskOption) *engine.TaskConfig {
+	cfg := engine.TaskConfig{
+		Retrieval: defaultRetrievalOptions(RetrievalBalanced),
 	}
 
 	for _, opt := range opts {

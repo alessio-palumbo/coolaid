@@ -1,41 +1,19 @@
 package ai
 
 import (
-	"cmp"
 	"context"
+	"coolaid/internal/core/engine"
 	"coolaid/internal/indexer"
 	"coolaid/internal/prompts"
-	"coolaid/internal/query"
-	"coolaid/internal/retrieval"
-	"coolaid/internal/store"
-	"coolaid/internal/web"
 	"errors"
-	"fmt"
-	"go/ast"
-	"go/parser"
-	"go/token"
-	"io"
 	"log/slog"
-	"os"
 	"path/filepath"
-	"slices"
-	"strings"
 	"time"
 )
-
-// minAcceptableScore defines the minimum similarity score required
-// for a search result to be considered relevant.
-//
-// Results below this threshold may trigger a retry with additional
-// context (e.g. repository summary).
-const minAcceptableScore = 0.5
 
 var (
 	// ErrEmptyPrompt is returned when a task requires a non-empty prompt.
 	ErrEmptyPrompt = errors.New("prompt required")
-
-	// ErrTargetFileRequired is returned when a task requires a target file:[fn].
-	ErrTargetFileRequired = errors.New("target file required")
 )
 
 // TaskResult represents the outcome of a task execution.
@@ -50,18 +28,16 @@ type TaskStatus struct {
 	NoResults bool
 }
 
+// Target describes a user-selected region of code to operate on.
+
+// It can represent either an entire file or a specific function/line range.
+// It is provided by the caller and used to scope LLM-based operations
+// such as refactoring, explanation, or test generation.
 type Target struct {
 	File      string
 	Function  string
 	StartLine int
 	EndLine   int
-}
-
-func (t Target) validate() error {
-	if t.File == "" {
-		return ErrTargetFileRequired
-	}
-	return nil
 }
 
 // IndexProgress represents the current progress of an indexing operation.
@@ -85,85 +61,6 @@ type IndexResult struct {
 	Chunks        int
 	StoreLocation string
 	Elapsed       time.Duration
-}
-
-// task represents an internal execution unit for LLM-based operations.
-//
-// It encapsulates all inputs required to build a prompt (target, template,
-// and prompt text), configuration options (retrieval, formatting, etc.),
-// and optional post-processing handlers that operate on the final LLM output.
-//
-// If no handlers are provided, the task runs in streaming mode.
-// If handlers are present, the full response is generated and passed to them.
-type task struct {
-	UserPrompt string
-	Template   prompts.Template
-	Target     Target
-	TargetBody string
-	Summary    string
-	config     *taskConfig
-}
-
-// newTask constructs an internal task and applies all TaskOptions,
-// producing a parsed task configuration ready for execution.
-func newTask(userPrompt string, tmpl prompts.Template, opts ...TaskOption) task {
-	return task{
-		UserPrompt: userPrompt,
-		Template:   tmpl,
-		config:     parseTaskOptions(opts...),
-	}
-}
-
-// withTarget associates a target file or function with the task
-// and returns the updated task.
-func (t task) withTarget(target Target) task {
-	t.Target = target
-	return t
-}
-
-// buildPrompt renders the final LLM prompt using the task template,
-// memory state, optional retrieval chunks, and any derived task inputs
-// such as repository summary or target body.
-// It returns a fully formatted prompt ready for execution.
-func (t task) buildPrompt(memory store.Memory, chunks ...retrieval.Chunk) (string, error) {
-	cfg := &prompts.Config{
-		Template:       t.Template,
-		Memory:         memory,
-		SystemOverride: t.config.prompt.systemOverride,
-		Structured:     t.config.prompt.structuredOutput,
-		Summary:        t.Summary,
-	}
-	if t.TargetBody != "" {
-		cfg = cfg.WithTarget(t.Target.File, t.Target.Function, t.TargetBody)
-	}
-	return prompts.Render(cfg, t.UserPrompt, chunks...)
-}
-
-// execute runs the task using streaming mode by default.
-//
-// If result handlers are configured, it switches to buffered generation
-// and passes the final output to each handler.
-func (t task) execute(ctx context.Context, llm LLM, w io.Writer, prompt string) error {
-	if len(t.config.handlers) > 0 {
-		out, err := llm.Generate(ctx, prompt)
-		if err != nil {
-			return err
-		}
-		return t.runHandlers(ctx, out)
-	}
-
-	return llm.GenerateStream(ctx, prompt, w)
-}
-
-// runHandlers invokes all configured result handlers in order,
-// passing each the final generated output.
-func (t task) runHandlers(ctx context.Context, out string) error {
-	for _, h := range t.config.handlers {
-		if err := h.Handle(ctx, out); err != nil {
-			return err
-		}
-	}
-	return nil
 }
 
 // Index builds a fresh index for the configured project.
@@ -240,51 +137,36 @@ func (c *Client) FlushMemory(ctx context.Context) (int, error) {
 // Supported TaskOptions:
 //   - WithWebSearch
 //   - WithResultHandler
-func (c *Client) Ask(ctx context.Context, userPrompt string, opts ...TaskOption) error {
-	if userPrompt == "" {
+func (c *Client) Ask(ctx context.Context, prompt string, opts ...TaskOption) error {
+	if prompt == "" {
 		return ErrEmptyPrompt
 	}
 
-	task := newTask(userPrompt, prompts.TemplateAsk, opts...)
-	var chunks []retrieval.Chunk
-	if l := task.config.web.searchLimit; l > 0 {
-		var err error
-		chunks, err = web.NewPipeline(l).Run(ctx, task.UserPrompt)
-		if err != nil {
-			return err
-		}
-	}
-
-	renderedPrompt, err := task.buildPrompt(c.store.GetMemory(), chunks...)
-	if err != nil {
-		return err
-	}
-
-	return c.memory.Capture(c.writer, task.UserPrompt, func(w io.Writer) error {
-		return task.execute(ctx, c.llm, w, renderedPrompt)
-	})
+	_, err := c.engine.Run(ctx, engine.Request{
+		Kind:       engine.TaskAsk,
+		UserPrompt: prompt,
+		Template:   prompts.TemplateAsk,
+		Config:     parseTaskOptions(opts...),
+	},
+	)
+	return err
 }
 
 // Search performs a semantic search against the index and writes
 // the matching results to the configured writer.
 //
 // It does not invoke the LLM.
-func (c *Client) Search(ctx context.Context, userPrompt string, opts ...TaskOption) (TaskResult, error) {
-	if userPrompt == "" {
+func (c *Client) Search(ctx context.Context, prompt string, opts ...TaskOption) (TaskResult, error) {
+	if prompt == "" {
 		return TaskResult{}, ErrEmptyPrompt
 	}
 
-	taskCfg := parseTaskOptions(opts...)
-	results, err := c.doSearch(ctx, userPrompt, taskCfg.retrieval, false)
-	if err != nil {
-		return TaskResult{}, err
-	}
-	if len(results) == 0 {
-		return TaskResult{Status: TaskStatus{NoResults: true}}, nil
-	}
-
-	fmt.Fprint(c.writer, retrieval.JoinChunks(results...))
-	return TaskResult{}, nil
+	r, err := c.engine.Run(ctx, engine.Request{
+		Kind:       engine.TaskSearch,
+		UserPrompt: prompt,
+		Config:     parseTaskOptions(opts...),
+	})
+	return TaskResult{Status: TaskStatus{NoResults: r.NoResults}}, err
 }
 
 // Query executes a retrieval-augmented query against the index
@@ -301,57 +183,30 @@ func (c *Client) Search(ctx context.Context, userPrompt string, opts ...TaskOpti
 //   - streams the final answer via the LLM
 //
 // If no relevant results are found, TaskResult.Status.NoResults is set.
-func (c *Client) Query(ctx context.Context, userPrompt string, opts ...TaskOption) (TaskResult, error) {
-	if userPrompt == "" {
+func (c *Client) Query(ctx context.Context, prompt string, opts ...TaskOption) (TaskResult, error) {
+	if prompt == "" {
 		return TaskResult{}, ErrEmptyPrompt
 	}
 
-	task := newTask(userPrompt, prompts.TemplateQuery, opts...)
-	searchPrompt := task.UserPrompt
-
-	var usedSummary bool
-	if !query.IsSearchable(searchPrompt) {
-		// Make sure the Summary is present before appending.
-		c.store.EnsureLoaded()
-		searchPrompt = enrichWithSummary(searchPrompt, c.store.Summary)
-		usedSummary = true
-	}
-
-	chunks, err := c.doSearch(ctx, searchPrompt, task.config.retrieval, false)
-	if err != nil {
-		return TaskResult{}, err
-	}
-
-	if shouldRetry(chunks) && !usedSummary {
-		searchPrompt = enrichWithSummary(searchPrompt, c.store.Summary)
-		usedSummary = true
-
-		chunks, err = c.semanticSearch(ctx, searchPrompt, task.config.retrieval.k, task.config.retrieval.useMMR)
-		if err != nil {
-			return TaskResult{}, err
-		}
-	}
-	if len(chunks) == 0 {
-		return TaskResult{Status: TaskStatus{NoResults: true}}, nil
-	}
-
-	if usedSummary {
-		task.Summary = c.store.Summary
-	}
-	renderedPrompt, err := task.buildPrompt(c.store.GetMemory(), chunks...)
-	if err != nil {
-		return TaskResult{}, err
-	}
-
-	return TaskResult{}, c.memory.Capture(c.writer, task.UserPrompt, func(w io.Writer) error {
-		return task.execute(ctx, c.llm, w, renderedPrompt)
+	r, err := c.engine.Run(ctx, engine.Request{
+		Kind:       engine.TaskQuery,
+		UserPrompt: prompt,
+		Template:   prompts.TemplateQuery,
+		Config:     parseTaskOptions(opts...),
 	})
+	return TaskResult{Status: TaskStatus{NoResults: r.NoResults}}, err
 }
 
 // Summarize generates a summary of a Target file.
 // It disables retrieval by default.
 func (c *Client) Summarize(ctx context.Context, target Target, opts ...TaskOption) (TaskResult, error) {
-	return c.runTargetTask(ctx, newTask("", prompts.TemplateSummarize, withDefaultRetrieval(RetrievalNone, opts)...).withTarget(target))
+	r, err := c.engine.Run(ctx, engine.Request{
+		Kind:     engine.TaskTarget,
+		Target:   engine.Target(target),
+		Template: prompts.TemplateSummarize,
+		Config:   parseTaskOptions(withDefaultRetrieval(RetrievalNone, opts)...),
+	})
+	return TaskResult{Status: TaskStatus{NoResults: r.NoResults}}, err
 }
 
 // Explain analyzes a target and generates an explanation using
@@ -361,7 +216,13 @@ func (c *Client) Summarize(ctx context.Context, target Target, opts ...TaskOptio
 // and excludes the target file itself from the retrieved context
 // to avoid redundant information.
 func (c *Client) Explain(ctx context.Context, target Target, opts ...TaskOption) (TaskResult, error) {
-	return c.runTargetTask(ctx, newTask("", prompts.TemplateExplain, opts...).withTarget(target))
+	r, err := c.engine.Run(ctx, engine.Request{
+		Kind:     engine.TaskTarget,
+		Target:   engine.Target(target),
+		Template: prompts.TemplateExplain,
+		Config:   parseTaskOptions(opts...),
+	})
+	return TaskResult{Status: TaskStatus{NoResults: r.NoResults}}, err
 }
 
 // GenerateTests generates tests for a given target.
@@ -374,7 +235,13 @@ func (c *Client) GenerateTests(ctx context.Context, target Target, opts ...TaskO
 		template = prompts.TemplateTestGo
 	}
 
-	return c.runTargetTask(ctx, newTask("", template, withDefaultRetrieval(RetrievalNone, opts)...).withTarget(target))
+	r, err := c.engine.Run(ctx, engine.Request{
+		Kind:     engine.TaskTarget,
+		Target:   engine.Target(target),
+		Template: template,
+		Config:   parseTaskOptions(withDefaultRetrieval(RetrievalNone, opts)...),
+	})
+	return TaskResult{Status: TaskStatus{NoResults: r.NoResults}}, err
 }
 
 // Edit modifies code based on a user-provided instruction.
@@ -387,166 +254,51 @@ func (c *Client) GenerateTests(ctx context.Context, target Target, opts ...TaskO
 //
 // This is a general-purpose code transformation primitive used for fixes,
 // refactors, and targeted rewrites.
-func (c *Client) Edit(ctx context.Context, target Target, userPrompt string, opts ...TaskOption) (TaskResult, error) {
-	return c.runTargetTask(ctx, newTask(userPrompt, prompts.TemplateExplain, opts...).withTarget(target))
+func (c *Client) Edit(ctx context.Context, target Target, prompt string, opts ...TaskOption) (TaskResult, error) {
+	r, err := c.engine.Run(ctx, engine.Request{
+		Kind:       engine.TaskTarget,
+		UserPrompt: prompt,
+		Target:     engine.Target(target),
+		Template:   prompts.TemplateEdit,
+		Config:     parseTaskOptions(opts...),
+	})
+	return TaskResult{Status: TaskStatus{NoResults: r.NoResults}}, err
 }
 
 // Fix attempts to correct bugs or incorrect behavior in the given target.
 // It applies minimal changes required to restore correctness without refactoring.
 func (c *Client) Fix(ctx context.Context, target Target, opts ...TaskOption) (TaskResult, error) {
-	return c.runTargetTask(ctx, newTask("", prompts.TemplateFix, opts...).withTarget(target))
+	r, err := c.engine.Run(ctx, engine.Request{
+		Kind:     engine.TaskTarget,
+		Target:   engine.Target(target),
+		Template: prompts.TemplateFix,
+		Config:   parseTaskOptions(opts...),
+	})
+	return TaskResult{Status: TaskStatus{NoResults: r.NoResults}}, err
 }
 
 // Refactor improves code structure and readability without changing behavior.
 // It focuses on maintainability, clarity, and idiomatic style.
 func (c *Client) Refactor(ctx context.Context, target Target, opts ...TaskOption) (TaskResult, error) {
-	return c.runTargetTask(ctx, newTask("", prompts.TemplateRefactor, opts...).withTarget(target))
+	r, err := c.engine.Run(ctx, engine.Request{
+		Kind:     engine.TaskTarget,
+		Target:   engine.Target(target),
+		Template: prompts.TemplateRefactor,
+		Config:   parseTaskOptions(opts...),
+	})
+	return TaskResult{Status: TaskStatus{NoResults: r.NoResults}}, err
 }
 
 // Comment adds or improves code comments to explain intent and non-obvious logic.
 // It does not modify code behavior.
 func (c *Client) Comment(ctx context.Context, target Target, opts ...TaskOption) (TaskResult, error) {
-	return c.runTargetTask(ctx, newTask("", prompts.TemplateComment, withDefaultRetrieval(RetrievalNone, opts)...).withTarget(target))
-}
-
-// runTargetTask is a shared helper for target-based LLM tasks.
-//
-// It loads the target file, optionally retrieves supporting context (based on
-// retrieval settings), and renders a prompt using the provided template.
-//
-// The target body (file or function) is always included, while retrieved chunks
-// are passed as optional context to improve reasoning when enabled.
-//
-// This function centralizes prompt construction and execution, ensuring
-// consistent behavior across all target-based commands.
-func (c *Client) runTargetTask(ctx context.Context, t task) (TaskResult, error) {
-	chunks, data, err := c.retrieveFromTarget(ctx, t.Target, t.config)
-	if err != nil {
-		return TaskResult{}, err
-	}
-
-	// Exclude any chunks matching the file to avoid wasting tokens unless function is defined.
-	if t.Target.Function == "" {
-		for i := 0; i < len(chunks); i++ {
-			if strings.Contains(chunks[i].Source, t.Target.File) {
-				chunks = slices.Delete(chunks, i, i+1)
-				i--
-			}
-		}
-	}
-
-	t.TargetBody = extractTarget(data, t.Target)
-	renderedPrompt, err := t.buildPrompt(c.store.GetMemory(), chunks...)
-	if err != nil {
-		return TaskResult{}, err
-	}
-
-	return TaskResult{}, t.execute(ctx, c.llm, c.writer, renderedPrompt)
-}
-
-// doSearch retrieves relevant chunks for a given prompt using a symbol-first strategy.
-//
-// It first attempts to extract a code-like identifier (e.g. "TestCommand")
-// and performs a fast in-memory symbol lookup. Symbol matches are high-precision
-// and are preferred when available.
-//
-// If symbol matches are found:
-//   - When preferSymbol=true, they are returned immediately.
-//   - When the number of symbol matches satisfies k, they are returned immediately.
-//   - Otherwise, they are combined with semantic search results to fill the remaining slots.
-//
-// If no symbol is found (or no symbol matches exist), it falls back to semantic
-// (vector) search.
-//
-// This approach balances deterministic identifier-based retrieval with semantic
-// similarity, while limiting noise and preserving result count expectations.
-func (c *Client) doSearch(ctx context.Context, userPrompt string, opts retrievalOptions, preferSymbol bool) ([]retrieval.Chunk, error) {
-	var symbolResults []retrieval.Chunk
-	for _, sym := range query.ExtractIdentifiers(userPrompt) {
-		results, err := c.store.FindBySymbol(userPrompt, sym, opts.k)
-		if err != nil {
-			return nil, err
-		}
-		symbolResults = append(symbolResults, results...)
-	}
-
-	if len(symbolResults) > 0 && (preferSymbol || len(symbolResults) >= opts.k) {
-		return symbolResults, nil
-	}
-
-	// compute semantic budget
-	semanticK := opts.k
-	if len(symbolResults) > 0 {
-		semanticK -= len(symbolResults)
-	}
-	semanticResults, err := c.semanticSearch(ctx, userPrompt, semanticK, opts.useMMR)
-	if err != nil {
-		return nil, err
-	}
-	if len(symbolResults) == 0 {
-		return semanticResults, nil
-	}
-	return mergeResults(symbolResults, semanticResults, opts.k), nil
-}
-
-// semanticSearch performs a vector similarity search against the index.
-//
-// It embeds the prompt and retrieves the top-k most relevant chunks.
-// If useMMR is true, Max Marginal Relevance is applied to improve diversity.
-func (c *Client) semanticSearch(ctx context.Context, userPrompt string, k int, useMMR bool) ([]retrieval.Chunk, error) {
-	queryVec, err := c.llm.Embed(ctx, userPrompt)
-	if err != nil {
-		return nil, err
-	}
-	return c.store.Search(queryVec, k, useMMR)
-}
-
-// retrieveFromTarget builds retrieval context for a given Target.
-//
-// It validates the target, reads the file content, and optionally performs
-// semantic retrieval over the indexed codebase using extracted signals
-// (e.g. identifiers, structure, comments).
-//
-// The returned chunks represent optional supporting context (related functions,
-// types, or usages) that may improve LLM reasoning when combined with the target.
-//
-// The raw file content is always returned so callers can extract the specific
-// function or file segment for the prompt.
-//
-// Retrieval is disabled when k < 1 (e.g. RetrievalNone), in which case only
-// the file content is returned.
-//
-// Note: This is a best-effort enrichment step. Failure or empty results should
-// not prevent LLM execution.
-func (c *Client) retrieveFromTarget(ctx context.Context, target Target, taskCfg *taskConfig) ([]retrieval.Chunk, []byte, error) {
-	if err := target.validate(); err != nil {
-		return nil, nil, err
-	}
-
-	data, err := os.ReadFile(target.File)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	if taskCfg.retrieval.k < 1 {
-		return nil, data, nil
-	}
-
-	// Find dependencies chunks to pass as dependencies to LLM.
-	signals := query.ExtractSignals(target.File, data, false)
-	results, err := c.doSearch(ctx, signals, taskCfg.retrieval, false)
-	return results, data, err
-}
-
-// enrichWithSummary appends repository summary context to the prompt.
-func enrichWithSummary(prompt, summary string) string {
-	return prompt + "\n\n" + summary
-}
-
-// shouldRetry determines whether a search should be retried with
-// additional context (e.g. summary) based on chunk quality.
-func shouldRetry(results []retrieval.Chunk) bool {
-	return len(results) == 0 || results[0].Score < minAcceptableScore
+	r, err := c.engine.Run(ctx, engine.Request{
+		Kind:     engine.TaskTarget,
+		Target:   engine.Target(target),
+		Template: prompts.TemplateComment,
+		Config:   parseTaskOptions(withDefaultRetrieval(RetrievalNone, opts)...),
+	})
+	return TaskResult{Status: TaskStatus{NoResults: r.NoResults}}, err
 }
 
 // isSupportedLanguage reports whether test generation is supported
@@ -557,68 +309,4 @@ func isSupportedLanguage(path string) bool {
 		return true
 	}
 	return false
-}
-
-// extractTarget returns a slice of the source based on Target.
-// Priority: range > function > full file.
-func extractTarget(src []byte, t Target) string {
-	// Range-based extraction (line range)
-	if t.StartLine > 0 && t.EndLine > 0 {
-		lines := strings.Split(string(src), "\n")
-
-		// clamp bounds
-		start := max(t.StartLine-1, 0)
-		end := min(t.EndLine, len(lines))
-
-		return strings.Join(lines[start:end], "\n")
-	}
-
-	// Function-based extraction
-	if t.Function != "" {
-		// TODO support extraction for other languages through treesitter.
-		fset := token.NewFileSet()
-		file, err := parser.ParseFile(fset, "", src, parser.ParseComments)
-		if err == nil {
-			for _, decl := range file.Decls {
-				f, ok := decl.(*ast.FuncDecl)
-				if !ok || f.Name.Name != t.Function {
-					continue
-				}
-
-				start := fset.Position(f.Pos()).Offset
-				if f.Doc != nil {
-					start = fset.Position(f.Doc.Pos()).Offset
-				}
-				end := fset.Position(f.End()).Offset
-
-				return string(src[start:end])
-			}
-		}
-	}
-
-	// Fallback: full file
-	return string(src)
-}
-
-// mergeResults combines symbol-based and semantic search results into a single ranked list.
-//
-// Chunks are appended and then sorted by score in descending order. The final slice
-// is truncated to at most k elements.
-//
-// It assumes both input slices use the same scoring scale (e.g. cosine similarity in [0,1]).
-// Symbol chunks are typically higher precision and expected to rank above semantic chunks,
-// but no explicit boosting is applied here.
-//
-// This function does not deduplicate chunks. Callers should ensure inputs are distinct
-// if necessary.
-func mergeResults(sym, vec []retrieval.Chunk, k int) []retrieval.Chunk {
-	results := append(sym, vec...)
-	slices.SortFunc(results, func(a, b retrieval.Chunk) int {
-		return cmp.Compare(b.Score, a.Score)
-	})
-
-	if len(results) > k {
-		results = results[:k]
-	}
-	return results
 }

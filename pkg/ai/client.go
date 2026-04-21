@@ -2,6 +2,7 @@ package ai
 
 import (
 	"context"
+	"coolaid/internal/core/engine"
 	"coolaid/internal/llm"
 	"coolaid/internal/llm/memory"
 	"coolaid/internal/store"
@@ -47,7 +48,9 @@ type Memory interface {
 // Client is the main entry point for interacting with the indexing
 // and querying system.
 type Client struct {
-	cfg   *Config
+	cfg    *Config
+	engine *engine.Engine
+
 	llm   *llm.Client
 	store *store.Store
 
@@ -76,11 +79,15 @@ func NewClient(cfg *Config, writer io.Writer) (*Client, error) {
 		return nil, err
 	}
 
+	memory := memory.NewService(store, llmClient)
+	engine := engine.NewEngine(llmClient, store, memory, writer)
+
 	return &Client{
 		cfg:    cfg,
+		engine: engine,
 		llm:    llmClient,
 		store:  store,
-		memory: memory.NewService(store, llmClient),
+		memory: memory,
 		writer: writer,
 	}, nil
 }

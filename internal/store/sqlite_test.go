@@ -14,7 +14,7 @@ func TestResetIndex(t *testing.T) {
 	s, _ := newTestStore(t)
 
 	s.Items = []Item{{FilePath: "a.go", StartLine: 1, EndLine: 2, Content: "x", Embedding: []float64{1, 2}}}
-	s.Summary = "hello"
+	s.summary = "hello"
 
 	require.NoError(t, s.Save())
 	require.NoError(t, s.ResetIndex())
@@ -28,7 +28,7 @@ func TestResetIndex(t *testing.T) {
 
 	// Memory check
 	require.Nil(t, s.Items)
-	require.Equal(t, "", s.Summary)
+	require.Equal(t, "", s.summary)
 }
 
 func TestSave(t *testing.T) {
@@ -59,7 +59,7 @@ func TestSave(t *testing.T) {
 	require.Equal(t, 1, count)
 
 	// Writes Summary
-	s.Summary = "summary text"
+	s.summary = "summary text"
 	require.NoError(t, s.Save())
 
 	var content string
@@ -78,19 +78,19 @@ func TestLoad(t *testing.T) {
 	item0 := Item{FilePath: "a.go", StartLine: 1, EndLine: 2, Content: "x", Embedding: []float64{1, 2}}
 	item1 := Item{FilePath: "b.go", Symbol: "B", Kind: "function", StartLine: 1, EndLine: 2, Content: "func B()", Embedding: []float64{1, 1}}
 	s.Items = []Item{item0, item1}
-	s.Summary = "hello"
+	s.summary = "hello"
 	require.NoError(t, s.Save())
 
 	// Reset memory
 	s.Items = nil
-	s.Summary = ""
+	s.summary = ""
 	require.NoError(t, s.Load())
 	require.True(t, s.loaded)
 
 	require.Len(t, s.Items, 2)
 	require.Equal(t, item0, s.Items[0])
 	require.Equal(t, item1, s.Items[1])
-	require.Equal(t, "hello", s.Summary)
+	require.Equal(t, "hello", s.summary)
 }
 
 func TestValidateIndex(t *testing.T) {
@@ -205,7 +205,7 @@ func TestSaveLoad(t *testing.T) {
 
 	store2.EnsureLoaded()
 	assert.Equal(t, 1, len(store2.Items))
-	assert.Equal(t, "summary", store2.Summary)
+	assert.Equal(t, "summary", store2.summary)
 }
 
 func Test_getMemory(t *testing.T) {

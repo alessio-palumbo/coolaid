@@ -2,9 +2,8 @@ package ai
 
 import (
 	"context"
+	"coolaid/internal/core/engine"
 	"coolaid/internal/llm"
-	"coolaid/internal/prompts"
-	"io"
 )
 
 // ChatSession represents a stateful conversation with the LLM.
@@ -15,7 +14,7 @@ type ChatSession struct {
 	client  *Client
 	history []llm.Message
 
-	cfg *taskConfig
+	cfg *engine.TaskConfig
 }
 
 // NewChatSession creates a new stateful chat session.
@@ -40,44 +39,30 @@ func (c *Client) NewChatSession(opts ...TaskOption) *ChatSession {
 // Send sends a user message to the chat session and streams the response.
 //
 // It:
-// - appends the raw user message to history
-// - performs semantic search using the latest message
+// - performs semantic search using the current message
 // - injects retrieved context into a temporary prompt (not persisted)
 // - streams the LLM response
+// - appends the raw user message to history
 // - appends the assistant response to history
 //
 // Retrieval is best-effort: if no relevant context is found, the model
 // responds using conversation history alone.
 func (s *ChatSession) Send(ctx context.Context, msg string) error {
-	// append original user message
-	s.history = append(s.history, userMsg(msg))
-
-	// try retrieval (non-blocking)
-	results, err := s.client.semanticSearch(ctx, msg, s.cfg.retrieval.k, s.cfg.retrieval.useMMR)
-	if err != nil {
-		return err
-	}
-
-	// build prompt (with or without results)
-	prompt, err := prompts.Render(&prompts.Config{
-		Template:       prompts.TemplateChat,
-		SystemOverride: s.cfg.prompt.systemOverride,
-		Structured:     s.cfg.prompt.structuredOutput,
-	}, msg, results...)
-	if err != nil {
-		return err
-	}
-
-	return s.client.memory.Capture(s.client.writer, msg, func(w io.Writer) error {
-		resp, err := s.client.llm.ChatStream(ctx, append(s.history[:len(s.history)-1], userMsg(prompt)), w)
-		if err != nil {
-			return err
-		}
-
-		// append assistant response
-		s.history = append(s.history, assistantMsg(resp))
-		return nil
+	resp, err := s.client.engine.RunChat(ctx, engine.ChatRequest{
+		Msg:     msg,
+		History: s.history,
+		Config:  s.cfg,
 	})
+	if err != nil {
+		return err
+	}
+
+	s.history = append(
+		s.history,
+		llm.Message{Role: llm.RoleUser, Content: msg},
+		llm.Message{Role: llm.RoleAssistant, Content: resp},
+	)
+	return nil
 }
 
 // Reset clears the current history to start a brand new chat.
@@ -88,12 +73,4 @@ func (s *ChatSession) Reset() {
 // History returns the cached history.
 func (s *ChatSession) History() []llm.Message {
 	return s.history
-}
-
-func userMsg(msg string) llm.Message {
-	return llm.Message{Role: llm.RoleUser, Content: msg}
-}
-
-func assistantMsg(msg string) llm.Message {
-	return llm.Message{Role: llm.RoleAssistant, Content: msg}
 }

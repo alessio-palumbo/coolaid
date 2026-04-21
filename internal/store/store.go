@@ -49,9 +49,9 @@ type Store struct {
 	ProjectRoot string
 	DBPath      string
 	Items       []Item
-	Summary     string
 
-	memory Memory
+	summary string
+	memory  Memory
 }
 
 // Memory is the persisted, compact representation of project-level context.
@@ -106,7 +106,7 @@ func (s *Store) AddItem(i Item) {
 
 // AddSummary adds a summary to the in-memory Store.
 func (s *Store) AddSummary(summary string) {
-	s.Summary = summary
+	s.summary = summary
 }
 
 // Search finds the top-k most similar chunks to the given query vector.
