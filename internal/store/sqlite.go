@@ -77,7 +77,7 @@ func (s *Store) Save() (err error) {
 			config_hash  = excluded.config_hash,
 			version      = excluded.version,
 			created_at   = excluded.created_at
-		`, s.ProjectRoot, s.configHash, metaVersion, s.now().Format(time.RFC3339),
+		`, s.projectRoot, s.configHash, metaVersion, s.now().Format(time.RFC3339),
 	)
 	if err != nil {
 		return err
@@ -114,7 +114,7 @@ func (s *Store) Save() (err error) {
 		DO UPDATE SET
 			content = excluded.content,
 			updated_at = excluded.updated_at
-			`, s.ProjectRoot, s.summary, s.now().Format(time.RFC3339))
+			`, s.projectRoot, s.summary, s.now().Format(time.RFC3339))
 		if err != nil {
 			return err
 		}
@@ -379,7 +379,7 @@ func (s *Store) loadSummary() (string, error) {
 	var summary string
 	err := s.db.QueryRow(`
 		SELECT content FROM summary WHERE project_root = ?
-	`, s.ProjectRoot).Scan(&summary)
+	`, s.projectRoot).Scan(&summary)
 
 	if err == sql.ErrNoRows {
 		return "", nil

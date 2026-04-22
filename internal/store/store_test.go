@@ -20,8 +20,8 @@ func TestNewStore(t *testing.T) {
 
 	assert.NotNil(t, store)
 	assert.NotNil(t, store.db)
-	assert.Equal(t, store.DBPath, filepath.Join(tmpDir, "my_db.sqlite"))
-	assert.Equal(t, store.ProjectRoot, pRoot)
+	assert.Equal(t, store.dbPath, filepath.Join(tmpDir, "my_db.sqlite"))
+	assert.Equal(t, store.projectRoot, pRoot)
 
 	// Test initialisation with data.
 	store.AddItem(Item{FilePath: "file.go", Content: "func A()", StartLine: 1, EndLine: 1, Embedding: []float64{1, 0}})
@@ -33,7 +33,7 @@ func TestNewStore(t *testing.T) {
 	defer store2.Close()
 
 	assert.NoError(t, store2.EnsureLoaded())
-	assert.Equal(t, len(store2.Items), 1)
+	assert.Equal(t, store2.ItemCount(), 1)
 
 	// Reload store, hash changed.
 	store2, err = NewStore(pRoot, tmpDir, "my_db", "new_hash")
@@ -41,7 +41,7 @@ func TestNewStore(t *testing.T) {
 	defer store2.Close()
 
 	assert.Error(t, ErrReindexRequired, err)
-	assert.Equal(t, len(store2.Items), 0)
+	assert.Equal(t, store2.ItemCount(), 0)
 }
 
 func TestSearch(t *testing.T) {

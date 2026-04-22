@@ -33,7 +33,7 @@ func TestResetIndex(t *testing.T) {
 
 func TestSave(t *testing.T) {
 	s, _ := newTestStore(t)
-	s.ProjectRoot = "/test"
+	s.projectRoot = "/test"
 	s.now = func() time.Time { return time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC) }
 	s.configHash = "abc123"
 	require.NoError(t, s.Save())
@@ -47,7 +47,7 @@ func TestSave(t *testing.T) {
 		SELECT project_root, config_hash FROM meta LIMIT 1
 	`).Scan(&root, &hash)
 	require.NoError(t, err)
-	require.Equal(t, s.ProjectRoot, root)
+	require.Equal(t, s.projectRoot, root)
 	require.Equal(t, s.configHash, hash)
 
 	// Writes embeddings
@@ -204,7 +204,7 @@ func TestSaveLoad(t *testing.T) {
 	defer store2.Close()
 
 	store2.EnsureLoaded()
-	assert.Equal(t, 1, len(store2.Items))
+	assert.Equal(t, 1, store2.ItemCount())
 	assert.Equal(t, "summary", store2.summary)
 }
 

@@ -46,8 +46,8 @@ type Store struct {
 	loaded     bool
 	configHash string
 
-	ProjectRoot string
-	DBPath      string
+	projectRoot string
+	dbPath      string
 	Items       []Item
 
 	summary string
@@ -80,8 +80,8 @@ func NewStore(projectRoot, storeDir, dbName, configHash string) (*Store, error) 
 		db:          db,
 		now:         func() time.Time { return time.Now().UTC() },
 		configHash:  configHash,
-		ProjectRoot: projectRoot,
-		DBPath:      dbPath,
+		projectRoot: projectRoot,
+		dbPath:      dbPath,
 	}
 	if err := s.init(); err != nil {
 		db.Close()
@@ -94,6 +94,16 @@ func NewStore(projectRoot, storeDir, dbName, configHash string) (*Store, error) 
 // Close closes the underlying DB.
 func (s *Store) Close() error {
 	return s.db.Close()
+}
+
+// DBPath returns the full path to the underlying database.
+func (s *Store) DBPath() string {
+	return s.dbPath
+}
+
+// ItemCount returns the number of Item chunks stored in memory.
+func (s *Store) ItemCount() int {
+	return len(s.Items)
 }
 
 // AddItem adds a chunk to the in-memory index.

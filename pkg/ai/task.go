@@ -44,7 +44,7 @@ type Target struct {
 // successfully processed. Processing is best-effort and may take time depending
 // on LLM latency.
 func (c *Client) FlushMemory(ctx context.Context) (int, error) {
-	return c.memory.FlushMemory(ctx)
+	return c.memStore.FlushMemory(ctx)
 }
 
 // Ask sends a raw prompt directly to the LLM and streams the response.

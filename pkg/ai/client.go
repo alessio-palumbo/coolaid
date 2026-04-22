@@ -30,29 +30,77 @@ const (
 	IndexStale
 )
 
-// LLM defines the language model operations used by task execution,
-// supporting both buffered and streaming generation, as well as chat as embedding.
-type LLM interface {
-	Generate(ctx context.Context, prompt string) (string, error)
-	GenerateStream(ctx context.Context, prompt string, writer io.Writer) error
-	ChatStream(ctx context.Context, messages []llm.Message, writer io.Writer) (string, error)
+// embedder generates vector embeddings for a given text input.
+//
+// It is used by the indexing pipeline to convert chunks of content
+// into high-dimensional vectors for similarity search and retrieval.
+type embedder interface {
 	Embed(ctx context.Context, text string) ([]float64, error)
 }
 
-// Memory defines the interface for asynchronous project memory management.
+// memStore defines the interface for asynchronous project memory management.
 //
-// It accepts interaction inputs for background processing and supports
-// graceful shutdown of any internal workers.
-type Memory interface {
+// It is responsible for capturing interaction context for background processing
+// and for flushing any buffered or pending memory state.
+type memStore interface {
+	// Capture records an interaction and optionally wraps execution to allow
+	// streaming or buffered context collection during processing.
 	Capture(w io.Writer, userPrompt string, fn func(w io.Writer) error) error
+
+	// FlushMemory forces any pending memory state to be processed and persisted.
+	// It returns the number of processed items and any error encountered.
 	FlushMemory(ctx context.Context) (int, error)
 }
 
-type Store interface {
-	Index(ctx context.Context, onProgress func(IndexProgress), onComplete func(IndexResult)) error
+// indexStore defines the persistence layer used by the AI client.
+//
+// It is responsible for storing indexed items (chunks + embeddings),
+// maintaining metadata such as summaries, and managing the lifecycle
+// of the underlying storage (e.g. file-backed DB, in-memory store).
+type indexStore interface {
+	// ValidateIndex ensures the underlying index is usable.
+	//
+	// It should verify that required structures exist and are compatible
+	// with the current schema/version. It does not modify state.
 	ValidateIndex() error
-	ResetIndex() (err error)
-	Save() (err error)
+
+	// ResetIndex clears all indexed data.
+	//
+	// This removes all stored items and summaries, effectively returning
+	// the store to an empty state.
+	ResetIndex() error
+
+	// DBPath returns the location of the underlying storage.
+	//
+	// This is typically a filesystem path and is useful for debugging,
+	// logging, or user-facing output.
+	DBPath() string
+
+	// Save persists any in-memory state to durable storage.
+	//
+	// For fully persistent stores this may be a no-op.
+	Save() error
+
+	// Close releases any resources held by the store.
+	//
+	// After calling Close, the store should not be used.
+	Close() error
+
+	// ItemCount returns the number of indexed items currently stored.
+	//
+	// An item typically represents a chunk of content with its embedding.
+	ItemCount() int
+
+	// AddItem stores a single indexed item.
+	//
+	// It is expected to be called during indexing and may be invoked
+	// concurrently depending on the implementation.
+	AddItem(i store.Item)
+
+	// AddSummary stores a high-level summary of the indexed project.
+	//
+	// This is typically called once after indexing completes.
+	AddSummary(summary string)
 }
 
 // Client is the main entry point for interacting with the indexing
@@ -61,11 +109,11 @@ type Client struct {
 	cfg    *Config
 	engine *engine.Engine
 
-	llm   *llm.Client
-	store *store.Store
+	embedder embedder
+	store    indexStore
 
-	memory Memory
-	writer io.Writer
+	memStore memStore
+	writer   io.Writer
 }
 
 // NewClient initializes a new Client using the provided configuration.
@@ -93,12 +141,12 @@ func NewClient(cfg *Config, writer io.Writer) (*Client, error) {
 	engine := engine.NewEngine(llmClient, store, memory, writer)
 
 	return &Client{
-		cfg:    cfg,
-		engine: engine,
-		llm:    llmClient,
-		store:  store,
-		memory: memory,
-		writer: writer,
+		cfg:      cfg,
+		engine:   engine,
+		embedder: llmClient,
+		store:    store,
+		memStore: memory,
+		writer:   writer,
 	}, nil
 }
 
@@ -121,7 +169,7 @@ func (c *Client) ProjectRoot() string {
 // This path is determined during client initialization and points to the
 // persisted index file used for semantic search operations.
 func (c *Client) StoreLocation() string {
-	return c.store.DBPath
+	return c.store.DBPath()
 }
 
 // IndexStatus reports the current state of the index for the client.
@@ -217,7 +265,7 @@ func (c *Client) Index(ctx context.Context, onProgress func(IndexProgress), onCo
 		Extensions:     c.cfg.extensions,
 		MaxWorkers:     c.cfg.IndexMaxWorkers,
 	}
-	if err := indexer.Build(ctx, c.llm, c.store, c.cfg.Logger, opts, func(p indexer.Progress) {
+	if err := indexer.Build(ctx, c.embedder, c.store, c.cfg.Logger, opts, func(p indexer.Progress) {
 		if onProgress != nil {
 			onProgress(IndexProgress{
 				Done:  p.Done,
@@ -235,17 +283,19 @@ func (c *Client) Index(ctx context.Context, onProgress func(IndexProgress), onCo
 	}
 
 	elapsed := time.Since(start)
+	dbPath := c.store.DBPath()
+	nChunks := c.store.ItemCount()
 	if onComplete != nil {
 		onComplete(IndexResult{
-			Chunks:        len(c.store.Items),
-			StoreLocation: c.store.DBPath,
+			Chunks:        nChunks,
+			StoreLocation: dbPath,
 			Elapsed:       elapsed,
 		})
 	}
 
 	c.cfg.Logger.Info("Indexing completed",
-		slog.Int("chunks", len(c.store.Items)),
-		slog.String("store_location", c.store.DBPath),
+		slog.Int("chunks", nChunks),
+		slog.String("store_location", dbPath),
 		slog.Duration("elapsed_time", elapsed),
 	)
 	return nil
