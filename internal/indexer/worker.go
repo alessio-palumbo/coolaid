@@ -2,7 +2,6 @@ package indexer
 
 import (
 	"context"
-	"coolaid/internal/llm"
 	"coolaid/internal/store"
 	"log/slog"
 	"os"
@@ -12,12 +11,13 @@ import (
 )
 
 type EmbedPipeline struct {
-	ctx     context.Context
-	jobs    chan embedJob
-	results chan embedResult
+	ctx           context.Context
+	jobs          chan embedJob
+	results       chan embedResult
+	collectorDone chan struct{}
 
-	client *llm.Client
-	store  *store.Store
+	llm    LLM
+	store  Store
 	logger *slog.Logger
 
 	wg sync.WaitGroup
@@ -40,16 +40,17 @@ type embedResult struct {
 	err       error
 }
 
-func NewEmbedPipeline(ctx context.Context, client *llm.Client, store *store.Store, logger *slog.Logger, maxWorkers, totalFiles int, onProgress ProgressFunc) *EmbedPipeline {
+func NewEmbedPipeline(ctx context.Context, llm LLM, store Store, logger *slog.Logger, maxWorkers, totalFiles int, onProgress ProgressFunc) *EmbedPipeline {
 	p := &EmbedPipeline{
-		ctx:        ctx,
-		jobs:       make(chan embedJob, 100),
-		results:    make(chan embedResult, 100),
-		client:     client,
-		store:      store,
-		logger:     logger,
-		total:      int64(totalFiles),
-		onProgress: onProgress,
+		ctx:           ctx,
+		jobs:          make(chan embedJob, 100),
+		results:       make(chan embedResult, 100),
+		collectorDone: make(chan struct{}),
+		llm:           llm,
+		store:         store,
+		logger:        logger,
+		total:         int64(totalFiles),
+		onProgress:    onProgress,
 	}
 
 	for range workerPool(maxWorkers) {
@@ -68,13 +69,14 @@ func (p *EmbedPipeline) Wait() {
 	close(p.jobs)
 	p.wg.Wait()
 	close(p.results)
+	<-p.collectorDone
 }
 
 func (p *EmbedPipeline) worker() {
 	for job := range p.jobs {
 		chunks := ChunkFile(job.file, job.content)
 		for _, chunk := range chunks {
-			embedding, err := p.client.Embed(p.ctx, chunk.Text)
+			embedding, err := p.llm.Embed(p.ctx, chunk.Text)
 			p.results <- embedResult{
 				file:      job.file,
 				embedding: embedding,
@@ -86,6 +88,8 @@ func (p *EmbedPipeline) worker() {
 }
 
 func (p *EmbedPipeline) collector() {
+	defer close(p.collectorDone)
+
 	filesDone := make(map[string]struct{})
 	for res := range p.results {
 		if res.err != nil {

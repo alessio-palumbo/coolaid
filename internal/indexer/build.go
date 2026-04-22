@@ -2,7 +2,6 @@ package indexer
 
 import (
 	"context"
-	"coolaid/internal/llm"
 	"coolaid/internal/store"
 	"log/slog"
 	"os"
@@ -13,6 +12,13 @@ import (
 // It controls which files are included, which are ignored, and how
 // the indexing workload is executed.
 type IndexOptions struct {
+	// ProjectRoot is the root directory of the project to index.
+	//
+	// It is used as the starting point for file traversal and to resolve
+	// ignore files (e.g. .gitignore). All relative paths are evaluated
+	// from this directory.
+	ProjectRoot string
+
 	// IgnorePatterns defines glob patterns for files or directories
 	// to exclude from indexing (e.g. "vendor/**", "node_modules/**").
 	IgnorePatterns []string
@@ -53,6 +59,15 @@ type Progress struct {
 // for handling how progress is displayed or consumed.
 type ProgressFunc func(Progress)
 
+type Store interface {
+	AddItem(i store.Item)
+	AddSummary(summary string)
+}
+
+type LLM interface {
+	Embed(ctx context.Context, text string) ([]float64, error)
+}
+
 // Build scans the given project, generates embeddings for supported files,
 // and stores the results in the provided vector store.
 //
@@ -61,19 +76,22 @@ type ProgressFunc func(Progress)
 //
 // Build is intended to be used internally by higher-level APIs and does not
 // perform any output or rendering itself.
-func Build(ctx context.Context, client *llm.Client, store *store.Store, logger *slog.Logger, opts IndexOptions, onProgress ProgressFunc) error {
-	ignore, err := LoadIgnore(store.ProjectRoot, opts.IgnorePatterns)
+func Build(ctx context.Context, llm LLM, store Store, logger *slog.Logger, opts IndexOptions, onProgress ProgressFunc) error {
+	ignore, err := LoadIgnore(opts.ProjectRoot, opts.IgnorePatterns)
 	if err != nil {
 		return err
 	}
 
-	files, err := Scan(store.ProjectRoot, ignore, opts.Extensions)
+	files, err := Scan(opts.ProjectRoot, ignore, opts.Extensions)
 	if err != nil {
 		return err
+	}
+	if len(files) == 0 {
+		return nil
 	}
 
 	summaryBuilder := NewSummaryBuilder()
-	pipeline := NewEmbedPipeline(ctx, client, store, logger, opts.MaxWorkers, len(files), onProgress)
+	pipeline := NewEmbedPipeline(ctx, llm, store, logger, opts.MaxWorkers, len(files), onProgress)
 
 	for _, file := range files {
 		content, err := loadFile(file)

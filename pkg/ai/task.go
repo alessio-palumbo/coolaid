@@ -3,12 +3,9 @@ package ai
 import (
 	"context"
 	"coolaid/internal/core/engine"
-	"coolaid/internal/indexer"
 	"coolaid/internal/prompts"
 	"errors"
-	"log/slog"
 	"path/filepath"
-	"time"
 )
 
 var (
@@ -38,87 +35,6 @@ type Target struct {
 	Function  string
 	StartLine int
 	EndLine   int
-}
-
-// IndexProgress represents the current progress of an indexing operation.
-//
-// It is emitted during Client.Index via the optional progress callback.
-// Done indicates the number of files processed so far, out of Total.
-// File is the current file being indexed, and Size is its size in bytes.
-type IndexProgress struct {
-	Done  int64
-	Total int64
-	File  string
-	Size  int64
-}
-
-// IndexResult summarizes the outcome of a completed indexing operation.
-//
-// It is passed to the onComplete callback of Client.Index and provides
-// high-level information about the indexing process, such as the number
-// of chunks stored, the database location, and the total elapsed time.
-type IndexResult struct {
-	Chunks        int
-	StoreLocation string
-	Elapsed       time.Duration
-}
-
-// Index builds a fresh index for the configured project.
-//
-// It clears any existing index, scans the project, generates embeddings,
-// and persists the results to the store.
-//
-// Progress updates are reported via the onProgress callback (if provided).
-// When indexing completes successfully, onComplete is invoked with a summary
-// of the operation (if provided).
-//
-// This method does not control how progress or results are rendered;
-// that responsibility is left to the caller.
-func (c *Client) Index(ctx context.Context, onProgress func(IndexProgress), onComplete func(IndexResult)) error {
-	if err := c.store.ResetIndex(); err != nil {
-		return err
-	}
-
-	c.cfg.Logger.Info("Indexing project", slog.String("root", c.store.ProjectRoot))
-	start := time.Now()
-
-	opts := indexer.IndexOptions{
-		IgnorePatterns: c.cfg.IgnorePatterns,
-		Extensions:     c.cfg.extensions,
-		MaxWorkers:     c.cfg.IndexMaxWorkers,
-	}
-	if err := indexer.Build(ctx, c.llm, c.store, c.cfg.Logger, opts, func(p indexer.Progress) {
-		if onProgress != nil {
-			onProgress(IndexProgress{
-				Done:  p.Done,
-				Total: p.Total,
-				File:  p.File,
-				Size:  p.Size,
-			})
-		}
-	}); err != nil {
-		return err
-	}
-
-	if err := c.store.Save(); err != nil {
-		return err
-	}
-
-	elapsed := time.Since(start)
-	if onComplete != nil {
-		onComplete(IndexResult{
-			Chunks:        len(c.store.Items),
-			StoreLocation: c.store.DBPath,
-			Elapsed:       elapsed,
-		})
-	}
-
-	c.cfg.Logger.Info("Indexing completed",
-		slog.Int("chunks", len(c.store.Items)),
-		slog.String("store_location", c.store.DBPath),
-		slog.Duration("elapsed_time", elapsed),
-	)
-	return nil
 }
 
 // FlushMemory processes all pending memory queue items.
